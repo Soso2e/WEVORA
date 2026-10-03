@@ -2,6 +2,7 @@
 
 #include "WEVORACharacter.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/World.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -10,30 +11,41 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
+#include "InputCoreTypes.h"
 #include "WEVORA.h"
 
 AWEVORACharacter::AWEVORACharacter()
 {
+	PrimaryActorTick.bCanEverTick = true;
+
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
-		
-	// Don't rotate when the controller rotates. Let that just affect the camera.
+
+	// Keep the character upright. Rotation follows planar travel while the camera remains independent.
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
 	bUseControllerRotationRoll = false;
 
-	// Configure character movement
-	GetCharacterMovement()->bOrientRotationToMovement = true;
-	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	Movement->bOrientRotationToMovement = true;
+	Movement->RotationRate = FRotator(0.0f, 620.0f, 0.0f);
 
-	// Note: For faster iteration times these variables, and many more, can be tweaked in the Character Blueprint
-	// instead of recompiling to adjust them
-	GetCharacterMovement()->JumpZVelocity = 500.f;
-	GetCharacterMovement()->AirControl = 0.35f;
-	GetCharacterMovement()->MaxWalkSpeed = 500.f;
-	GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
-	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
-	GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f;
+	// WEVORA movement intentionally keeps a little inertia.
+	Movement->GravityScale = 0.0f;
+	Movement->AirControl = 1.0f;
+	Movement->MaxAcceleration = GlideAcceleration;
+	Movement->MaxFlySpeed = CruiseSpeed;
+	Movement->BrakingDecelerationFlying = GlideBrakingDeceleration;
+	Movement->bUseSeparateBrakingFriction = true;
+	Movement->BrakingFriction = 0.25f;
+	Movement->BrakingFrictionFactor = 1.0f;
+
+	// Retain sensible walking values in case a future gameplay state temporarily returns to ground mode.
+	Movement->JumpZVelocity = 500.f;
+	Movement->MaxWalkSpeed = 500.f;
+	Movement->MinAnalogWalkSpeed = 20.f;
+	Movement->BrakingDecelerationWalking = 2000.f;
+	Movement->BrakingDecelerationFalling = 1500.0f;
 
 	// Create a camera boom (pulls in towards the player if there is a collision)
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
@@ -41,93 +53,352 @@ AWEVORACharacter::AWEVORACharacter()
 	CameraBoom->TargetArmLength = 400.0f;
 	CameraBoom->bUsePawnControlRotation = true;
 
+	// A small amount of camera lag sells the sense that the body is gliding through space.
+	CameraBoom->bEnableCameraLag = true;
+	CameraBoom->CameraLagSpeed = 10.0f;
+	CameraBoom->CameraLagMaxDistance = 80.0f;
+	CameraBoom->bEnableCameraRotationLag = true;
+	CameraBoom->CameraRotationLagSpeed = 13.0f;
+
 	// Create a follow camera
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
+}
 
-	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
-	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
+void AWEVORACharacter::BeginPlay()
+{
+	Super::BeginPlay();
+
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->GravityScale = 0.0f;
+		Movement->MaxAcceleration = GlideAcceleration;
+		Movement->MaxFlySpeed = CruiseSpeed;
+		Movement->BrakingDecelerationFlying = GlideBrakingDeceleration;
+		Movement->SetMovementMode(MOVE_Flying);
+	}
+
+	if (FollowCamera)
+	{
+		FollowCamera->SetFieldOfView(BaseCameraFOV);
+	}
+}
+
+void AWEVORACharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!Movement)
+	{
+		return;
+	}
+
+	// Keep live-tweakable Blueprint values reflected in the movement component.
+	Movement->MaxAcceleration = GlideAcceleration;
+	Movement->MaxFlySpeed = CruiseSpeed;
+	Movement->BrakingDecelerationFlying = GlideBrakingDeceleration;
+
+	UpdateVerticalMovement(DeltaSeconds);
+	UpdateHover(DeltaSeconds);
+	UpdateBrake(DeltaSeconds);
+	UpdateCameraFeel(DeltaSeconds);
 }
 
 void AWEVORACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
-	// Set up action bindings
-	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
-		
-		// Jumping
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
+	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
+	{
+		// The original template jump input becomes WEVORA's ascend control.
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &AWEVORACharacter::DoAscendStart);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &AWEVORACharacter::DoAscendEnd);
 
 		// Moving
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AWEVORACharacter::Move);
-		EnhancedInputComponent->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &AWEVORACharacter::Look);
 
 		// Looking
+		EnhancedInputComponent->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &AWEVORACharacter::Look);
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AWEVORACharacter::Look);
+
+		// Optional Enhanced Input actions. These can be assigned later in the Character Blueprint.
+		if (DescendAction)
+		{
+			EnhancedInputComponent->BindAction(DescendAction, ETriggerEvent::Started, this, &AWEVORACharacter::DoDescendStart);
+			EnhancedInputComponent->BindAction(DescendAction, ETriggerEvent::Completed, this, &AWEVORACharacter::DoDescendEnd);
+		}
+		else
+		{
+			PlayerInputComponent->BindKey(EKeys::LeftControl, IE_Pressed, this, &AWEVORACharacter::DoDescendStart);
+			PlayerInputComponent->BindKey(EKeys::LeftControl, IE_Released, this, &AWEVORACharacter::DoDescendEnd);
+		}
+
+		if (BurstAction)
+		{
+			EnhancedInputComponent->BindAction(BurstAction, ETriggerEvent::Started, this, &AWEVORACharacter::DoBurst);
+		}
+		else
+		{
+			PlayerInputComponent->BindKey(EKeys::LeftShift, IE_Pressed, this, &AWEVORACharacter::DoBurst);
+		}
+
+		if (BrakeAction)
+		{
+			EnhancedInputComponent->BindAction(BrakeAction, ETriggerEvent::Started, this, &AWEVORACharacter::DoBrakeStart);
+			EnhancedInputComponent->BindAction(BrakeAction, ETriggerEvent::Completed, this, &AWEVORACharacter::DoBrakeEnd);
+		}
+		else
+		{
+			PlayerInputComponent->BindKey(EKeys::LeftAlt, IE_Pressed, this, &AWEVORACharacter::DoBrakeStart);
+			PlayerInputComponent->BindKey(EKeys::LeftAlt, IE_Released, this, &AWEVORACharacter::DoBrakeEnd);
+		}
 	}
 	else
 	{
-		UE_LOG(LogWEVORA, Error, TEXT("'%s' Failed to find an Enhanced Input component! This template is built to use the Enhanced Input system. If you intend to use the legacy system, then you will need to update this C++ file."), *GetNameSafe(this));
+		UE_LOG(LogWEVORA, Error, TEXT("'%s' Failed to find an Enhanced Input component! This template is built to use the Enhanced Input system."), *GetNameSafe(this));
 	}
 }
 
 void AWEVORACharacter::Move(const FInputActionValue& Value)
 {
-	// input is a Vector2D
-	FVector2D MovementVector = Value.Get<FVector2D>();
-
-	// route the input
+	const FVector2D MovementVector = Value.Get<FVector2D>();
 	DoMove(MovementVector.X, MovementVector.Y);
 }
 
 void AWEVORACharacter::Look(const FInputActionValue& Value)
 {
-	// input is a Vector2D
-	FVector2D LookAxisVector = Value.Get<FVector2D>();
-
-	// route the input
+	const FVector2D LookAxisVector = Value.Get<FVector2D>();
 	DoLook(LookAxisVector.X, LookAxisVector.Y);
 }
 
 void AWEVORACharacter::DoMove(float Right, float Forward)
 {
-	if (GetController() != nullptr)
+	if (!GetController())
 	{
-		// find out which way is forward
-		const FRotator Rotation = GetController()->GetControlRotation();
-		const FRotator YawRotation(0, Rotation.Yaw, 0);
+		return;
+	}
 
-		// get forward vector
-		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+	const FRotator Rotation = GetController()->GetControlRotation();
+	const FRotator YawRotation(0.0f, Rotation.Yaw, 0.0f);
 
-		// get right vector 
-		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+	const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+	const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
-		// add movement 
-		AddMovementInput(ForwardDirection, Forward);
-		AddMovementInput(RightDirection, Right);
+	FVector DesiredDirection = ForwardDirection * Forward + RightDirection * Right;
+	const float InputMagnitude = FMath::Clamp(FVector2D(Right, Forward).Size(), 0.0f, 1.0f);
+
+	if (!DesiredDirection.IsNearlyZero())
+	{
+		DesiredDirection.Normalize();
+		LastPlanarInputDirection = DesiredDirection;
+		AddMovementInput(DesiredDirection, InputMagnitude);
 	}
 }
 
 void AWEVORACharacter::DoLook(float Yaw, float Pitch)
 {
-	if (GetController() != nullptr)
+	if (GetController())
 	{
-		// add yaw and pitch input to controller
 		AddControllerYawInput(Yaw);
 		AddControllerPitchInput(Pitch);
 	}
 }
 
+void AWEVORACharacter::DoAscendStart()
+{
+	bAscending = true;
+	bDescending = false;
+}
+
+void AWEVORACharacter::DoAscendEnd()
+{
+	bAscending = false;
+}
+
+void AWEVORACharacter::DoDescendStart()
+{
+	bDescending = true;
+	bAscending = false;
+}
+
+void AWEVORACharacter::DoDescendEnd()
+{
+	bDescending = false;
+}
+
+void AWEVORACharacter::DoBurst()
+{
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!Movement || !GetWorld())
+	{
+		return;
+	}
+
+	const float CurrentTime = GetWorld()->GetTimeSeconds();
+	if (CurrentTime - LastBurstTime < BurstCooldown)
+	{
+		return;
+	}
+
+	FVector BurstDirection = LastPlanarInputDirection.GetSafeNormal2D();
+
+	if (BurstDirection.IsNearlyZero())
+	{
+		BurstDirection = Movement->Velocity.GetSafeNormal2D();
+	}
+
+	if (BurstDirection.IsNearlyZero())
+	{
+		if (GetController())
+		{
+			const FRotator ControlRotation = GetController()->GetControlRotation();
+			BurstDirection = FRotationMatrix(FRotator(0.0f, ControlRotation.Yaw, 0.0f)).GetUnitAxis(EAxis::X);
+		}
+		else
+		{
+			BurstDirection = GetActorForwardVector().GetSafeNormal2D();
+		}
+	}
+
+	Movement->Velocity += BurstDirection * BurstImpulse;
+
+	const float PlanarSpeed = Movement->Velocity.Size2D();
+	if (PlanarSpeed > BurstMaxSpeed && PlanarSpeed > KINDA_SMALL_NUMBER)
+	{
+		const float Scale = BurstMaxSpeed / PlanarSpeed;
+		Movement->Velocity.X *= Scale;
+		Movement->Velocity.Y *= Scale;
+	}
+
+	LastBurstTime = CurrentTime;
+}
+
+void AWEVORACharacter::DoBrakeStart()
+{
+	bBraking = true;
+}
+
+void AWEVORACharacter::DoBrakeEnd()
+{
+	bBraking = false;
+}
+
 void AWEVORACharacter::DoJumpStart()
 {
-	// signal the character to jump
-	Jump();
+	DoAscendStart();
 }
 
 void AWEVORACharacter::DoJumpEnd()
 {
-	// signal the character to stop jumping
-	StopJumping();
+	DoAscendEnd();
+}
+
+void AWEVORACharacter::UpdateVerticalMovement(float DeltaSeconds)
+{
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!Movement)
+	{
+		return;
+	}
+
+	float VerticalInput = 0.0f;
+	if (bAscending)
+	{
+		VerticalInput += 1.0f;
+	}
+	if (bDescending)
+	{
+		VerticalInput -= 1.0f;
+	}
+
+	if (!FMath::IsNearlyZero(VerticalInput))
+	{
+		AddMovementInput(FVector::UpVector, VerticalInput * VerticalInputScale);
+	}
+	else
+	{
+		// Preserve some rise/fall momentum, then gently settle instead of stopping instantly.
+		Movement->Velocity.Z = FMath::FInterpTo(
+			Movement->Velocity.Z,
+			0.0f,
+			DeltaSeconds,
+			VerticalVelocityDamping);
+	}
+}
+
+void AWEVORACharacter::UpdateHover(float DeltaSeconds)
+{
+	if (!bHoverEnabled || bAscending || bDescending || !GetWorld())
+	{
+		return;
+	}
+
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!Movement)
+	{
+		return;
+	}
+
+	const float CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	const FVector TraceStart = GetActorLocation();
+	const float TraceLength = CapsuleHalfHeight + HoverHeight + HoverTraceExtraDistance;
+	const FVector TraceEnd = TraceStart - FVector::UpVector * TraceLength;
+
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(WEVORAHoverTrace), false, this);
+	FHitResult Hit;
+
+	if (!GetWorld()->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_Visibility, QueryParams))
+	{
+		return;
+	}
+
+	const float GroundGap = FMath::Max(0.0f, Hit.Distance - CapsuleHalfHeight);
+	const float HeightError = HoverHeight - GroundGap;
+
+	const float RequestedAcceleration =
+		(HeightError * HoverSpringStrength) -
+		(Movement->Velocity.Z * HoverSpringDamping);
+
+	const float HoverAcceleration = FMath::Clamp(
+		RequestedAcceleration,
+		-MaxHoverAcceleration,
+		MaxHoverAcceleration);
+
+	Movement->Velocity.Z += HoverAcceleration * DeltaSeconds;
+}
+
+void AWEVORACharacter::UpdateBrake(float DeltaSeconds)
+{
+	if (!bBraking)
+	{
+		return;
+	}
+
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->Velocity = FMath::VInterpTo(
+			Movement->Velocity,
+			FVector::ZeroVector,
+			DeltaSeconds,
+			BrakeInterpSpeed);
+	}
+}
+
+void AWEVORACharacter::UpdateCameraFeel(float DeltaSeconds)
+{
+	if (!FollowCamera)
+	{
+		return;
+	}
+
+	const float ReferenceSpeed = FMath::Max(BurstMaxSpeed, 1.0f);
+	const float SpeedRatio = FMath::Clamp(GetVelocity().Size() / ReferenceSpeed, 0.0f, 1.0f);
+	const float TargetFOV = BaseCameraFOV + SpeedFOVBoost * SpeedRatio;
+	const float NewFOV = FMath::FInterpTo(
+		FollowCamera->FieldOfView,
+		TargetFOV,
+		DeltaSeconds,
+		CameraFOVInterpSpeed);
+
+	FollowCamera->SetFieldOfView(NewFOV);
 }
