@@ -10,6 +10,7 @@
 class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
+class UWEVORASpellWeavingComponent;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -30,6 +31,10 @@ class AWEVORACharacter : public ACharacter
 	/** Follow camera */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	UCameraComponent* FollowCamera;
+
+public:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Spell")
+	UWEVORASpellWeavingComponent* SpellWeavingComponent;
 
 protected:
 
@@ -157,6 +162,9 @@ public:
 	/** Constructor */
 	AWEVORACharacter();
 
+	/** Cancel unfinished spell input when control leaves this pawn. */
+	virtual void UnPossessed() override;
+
 	/** Update hover, vertical control, braking and camera feel. */
 	virtual void Tick(float DeltaSeconds) override;
 
@@ -195,6 +203,10 @@ public:
 	/** Handles look inputs from either controls or UI interfaces */
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoLook(float Yaw, float Pitch);
+
+	/** Recenter the camera behind the character, looking horizontally forward. */
+	UFUNCTION(BlueprintCallable, Category="Input|Camera")
+	virtual void DoRecenterView();
 
 	/** Begin ascending. Existing Jump input routes here. */
 	UFUNCTION(BlueprintCallable, Category="WEVORA Movement")
