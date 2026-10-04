@@ -11,6 +11,7 @@ class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
 class UWEVORASpellWeavingComponent;
+class UWEVORASpellSelectionEffectComponent;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -35,6 +36,8 @@ class AWEVORACharacter : public ACharacter
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Spell")
 	UWEVORASpellWeavingComponent* SpellWeavingComponent;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Spell")
+	UWEVORASpellSelectionEffectComponent* SpellSelectionEffectComponent;
 
 protected:
 

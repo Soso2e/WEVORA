@@ -14,6 +14,7 @@
 #include "InputCoreTypes.h"
 #include "WEVORA.h"
 #include "Spell/WEVORASpellWeavingComponent.h"
+#include "Spell/WEVORASpellSelectionEffectComponent.h"
 
 AWEVORACharacter::AWEVORACharacter()
 {
@@ -22,6 +23,9 @@ AWEVORACharacter::AWEVORACharacter()
 
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
+	SpellSelectionEffectComponent = CreateDefaultSubobject<UWEVORASpellSelectionEffectComponent>(TEXT("SpellSelectionEffectComponent"));
+	SpellSelectionEffectComponent->SetupAttachment(GetMesh());
+	SpellSelectionEffectComponent->SetRelativeLocation(FVector(30.0f, 0.0f, 110.0f));
 
 	// Keep the character upright. Rotation follows planar travel while the camera remains independent.
 	bUseControllerRotationPitch = false;
@@ -222,10 +226,10 @@ void AWEVORACharacter::DoLook(float Yaw, float Pitch)
 
 void AWEVORACharacter::DoRecenterView()
 {
-	if (AController* Controller = GetController())
+	if (AController* ViewController = GetController())
 	{
 		// Set the view directly: recentering is not mouse input for spell gestures.
-		Controller->SetControlRotation(FRotator(0.0f, GetActorRotation().Yaw, 0.0f));
+		ViewController->SetControlRotation(FRotator(0.0f, GetActorRotation().Yaw, 0.0f));
 	}
 }
 

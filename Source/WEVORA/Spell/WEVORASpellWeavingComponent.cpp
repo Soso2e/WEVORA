@@ -22,6 +22,7 @@ void UWEVORASpellWeavingComponent::SetState(EWEVORAWeavingState NewState)
 	if (State == NewState) { return; }
 	State = NewState;
 	if (bLogEvents) { UE_LOG(LogWEVORA, Log, TEXT("Spell state: %s"), *UEnum::GetValueAsString(State)); }
+	OnSpellPresentationChanged.Broadcast(State, Context);
 }
 
 void UWEVORASpellWeavingComponent::BeginWeave()
@@ -35,6 +36,7 @@ void UWEVORASpellWeavingComponent::CycleElement()
 {
 	Context.Element = Context.Element == EWEVORASpellElement::Fire ? EWEVORASpellElement::Wind : EWEVORASpellElement::Fire;
 	if (bLogEvents) { UE_LOG(LogWEVORA, Log, TEXT("Spell element: %s"), *UEnum::GetValueAsString(Context.Element)); }
+	OnSpellPresentationChanged.Broadcast(State, Context);
 }
 
 void UWEVORASpellWeavingComponent::BeginShape()
@@ -86,8 +88,11 @@ void UWEVORASpellWeavingComponent::ReleaseWeave()
 
 void UWEVORASpellWeavingComponent::CancelWeave()
 {
+	const bool bWasIdle = State == EWEVORAWeavingState::Idle;
 	ClearGesture();
 	SetState(EWEVORAWeavingState::Idle);
+	// Explicit cancellation also stops an idle selection preview.
+	if (bWasIdle) { OnSpellPresentationChanged.Broadcast(State, Context); }
 }
 
 uint64 UWEVORASpellWeavingComponent::DebugKey() const

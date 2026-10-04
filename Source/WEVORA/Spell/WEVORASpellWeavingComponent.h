@@ -5,6 +5,7 @@
 #include "WEVORASpellWeavingComponent.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FWEVORAOnSpellCast, const FWEVORASpellContext&, Context);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FWEVORAOnSpellPresentationChanged, EWEVORAWeavingState, State, const FWEVORASpellContext&, Context);
 
 UCLASS(ClassGroup=(WEVORA), meta=(BlueprintSpawnableComponent))
 class WEVORA_API UWEVORASpellWeavingComponent : public UActorComponent
@@ -14,6 +15,9 @@ public:
 	UWEVORASpellWeavingComponent();
 	UPROPERTY(BlueprintAssignable, Category="Spell")
 	FWEVORAOnSpellCast OnSpellCast;
+	/** Selection/state snapshot for presentation; independent of casting gameplay. */
+	UPROPERTY(BlueprintAssignable, Category="Spell")
+	FWEVORAOnSpellPresentationChanged OnSpellPresentationChanged;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Recognition")
 	FWEVORAGestureThresholds Thresholds;
 	/** Template mouse Look commonly negates MouseY. Set false for positive-up mappings. */
