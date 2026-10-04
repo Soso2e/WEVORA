@@ -13,12 +13,15 @@
 #include "InputActionValue.h"
 #include "InputCoreTypes.h"
 #include "WEVORA.h"
+#include "AI/WEVORAHealthComponent.h"
 #include "Spell/WEVORASpellWeavingComponent.h"
 #include "Spell/WEVORASpellSelectionEffectComponent.h"
 
 AWEVORACharacter::AWEVORACharacter()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	HealthComponent = CreateDefaultSubobject<UWEVORAHealthComponent>(TEXT("HealthComponent"));
+	HealthComponent->bShowDamageFeedback = true;
 	SpellWeavingComponent = CreateDefaultSubobject<UWEVORASpellWeavingComponent>(TEXT("SpellWeavingComponent"));
 
 	// Set size for collision capsule

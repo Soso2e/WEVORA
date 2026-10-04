@@ -12,6 +12,7 @@ class UCameraComponent;
 class UInputAction;
 class UWEVORASpellWeavingComponent;
 class UWEVORASpellSelectionEffectComponent;
+class UWEVORAHealthComponent;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -34,6 +35,9 @@ class AWEVORACharacter : public ACharacter
 	UCameraComponent* FollowCamera;
 
 public:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Health")
+	UWEVORAHealthComponent* HealthComponent;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Spell")
 	UWEVORASpellWeavingComponent* SpellWeavingComponent;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Spell")
