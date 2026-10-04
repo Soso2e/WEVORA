@@ -29,16 +29,21 @@ Enhanced InputのStarted/Completed/Canceledからも公開APIを呼び出せま�
 Characterの`SpellSelectionEffectComponent`が、`OnSpellPresentationChanged`を購読して表示を管理します。
 認識処理と見た目を分離し、Tickで状態を監視せず、選択・状態の変更時だけ更新します。
 
-- IdleでQ: 選択属性を`IdlePreviewDuration`秒プレビュー（初期値0.35秒）。連続切替で延長。
-- LMB押下から編み中・Shape確定まで: 現在の属性を継続表示。Qでその場で更新。
+- Qで属性切替: 体から選択属性を`Selection Preview Duration`秒表示（初期値0.35秒、内部名IdlePreviewDuration）。編み中にも体から表示、連続切替で延長。
+- LMB押下から編み中・Shape確定まで: 右手に現在の属性を継続表示。Qで右手の属性も更新。
 - Cast、途中キャンセル、操作キャラクターの解除: 即時停止。
 - EndPlay: タイマー、通知購読、生成した表示コンポーネントを解放。
 
 `BP_ThirdPersonCharacter`のコンポーネントで次を設定します。
 
-1. `ElementEffects`のFire／WindへループするNiagara SystemとColorを指定。
-2. コンポーネントのTransformで表示位置・向き・サイズを調整。初期設定はMeshへ追従。
-   手に追従させる場合はParent Socketを実際のスケルトンのソケット名へ変更。
+1. `ElementEffects`のFire／Windへ右手用のループする`System`とColorを指定。
+   体の切替演出は`SelectionSystem`で別素材を指定できます。未指定なら`System`を短時間再生します。
+2. 右手のボーン`hand_r`へ追従します。`HandSocketName`で別のボーン／ソケットへ変更可能。
+   手元からの位置・向き・サイズは`HandOffset`で調整してください（初期値は手の原点）。
+   BeginPlayで取り付けとHandOffsetを適用するため、以前のMesh基準の固定オフセットも置き換わります。
+   ボーン／ソケットが存在しない場合は警告を出し、元の取り付け先を維持します。
+   Attachment設定の変更はPIEを再開始して反映してください。
+   体側の位置・向き・サイズはMesh相対の`BodyOffset`で調整します。右手側とは独立しています。
 3. 仮の色付きPoint Lightは素材なしで周辺を照らします。`bEnablePreviewLight`で無効化、
    `PreviewLightIntensity`／`PreviewLightRadius`で調整できます。
 4. 実行中に設定を変えた場合は`RefreshEffect`で再適用。
@@ -59,8 +64,9 @@ System未指定の場合は仮ライトのみ表示します。Niagara素材自�
 
 ## 確認
 
-自動テスト: WEVORA.Spell.Gestures / WEVORA.Spell.StateFlow / WEVORA.Spell.SelectionEffects。
+自動テスト: WEVORA.Spell.Gestures / WEVORA.Spell.StateFlow / WEVORA.Spell.SelectionEffects / WEVORA.Spell.HandAttachment。
 PIEで4GestureとQ切替、途中キャンセル、繰り返しCastを確認してください。
 移動は従来通りWASD / Space / Ctrl / Shift / Altで確認してください。
-選択表示はIdleのQの表示と消灯、編み中のQ、Shapeやり直し、Cast・キャンセル時の停止を確認してください。
+選択表示はQで体側が点灯・消灯し、編み中は右手に追従することを確認してください。
+編み中のQで体側の短時間表示と右手側の属性更新が同時に行われること、Shapeやり直し、Cast・キャンセル時の停止も確認してください。
 Niagara素材設定後はUser Parameterの反映と、繰り返し操作で表示が残らないこともPIEで確認してください。

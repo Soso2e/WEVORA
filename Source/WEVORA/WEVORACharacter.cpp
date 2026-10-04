@@ -27,8 +27,7 @@ AWEVORACharacter::AWEVORACharacter()
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 	SpellSelectionEffectComponent = CreateDefaultSubobject<UWEVORASpellSelectionEffectComponent>(TEXT("SpellSelectionEffectComponent"));
-	SpellSelectionEffectComponent->SetupAttachment(GetMesh());
-	SpellSelectionEffectComponent->SetRelativeLocation(FVector(30.0f, 0.0f, 110.0f));
+	SpellSelectionEffectComponent->SetupAttachment(GetMesh(), TEXT("hand_r"));
 
 	// Keep the character upright. Rotation follows planar travel while the camera remains independent.
 	bUseControllerRotationPitch = false;

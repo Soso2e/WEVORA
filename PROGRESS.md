@@ -20,6 +20,9 @@
 - 問題: 最初のビルドで既存DoRecenterViewのController変数が親クラスメンバーを隠すC4458が発生。ViewControllerへ改名後ビルド成功。
 - 問題: 自動テストの初回・2回目はEndPlay購読解除の検証が失敗。テスト用WorldのActor初期化が不足していたため、初期化と終了のライフサイクルを明示して再実行し、3回目は全件成功。3回目のWorld context警告もテスト側の不要なActor Destroyを除去して解消し、最終4回目は3件成功・テスト警告0・失敗0。現在の自動確認に未解決の失敗なし。
 - TODO: Fire/Wind用のNiagara素材を制作・設定し、PIEで確認。
+- 完了: 属性切替の瞬間は体側の短時間演出、編み中は右手hand_rに追従する表示へ分離。編み中のQでも体側の演出と右手側の属性更新を同時に実行。BodyOffset/HandOffset/HandSocketNameと属性別SelectionSystemで個別調整可能。
+- 完了: Editorをユーザーが保存・終了後、UE 5.8 Editorビルド成功。Headless魔法テスト4/4成功・テスト警告0。実BP_ThirdPersonCharacterのhand_r存在、取り付け先、手のWorld位置との一致、旧固定オフセットの置換、体側との独立表示を確認。
+- 未確認: 右手アニメーション中の視覚的な追従、体側の高さ・明るさ、素材設定後のPIE表示。発射・着弾VFXは引き続き未実装。
 - 次にやること: Editorを再起動し、BP_WEVORAEnemyをレベルへ配置してPIE確認。続けてBP_ThirdPersonCharacterのSpellSelectionEffectComponentでElementEffectsと表示Transformを調整。
 
 ## 確認方法
@@ -52,4 +55,7 @@
 | 2026-10-04-02 | テスト用Actorの初期化・終了手順を修正。Editor再ビルド成功、Headless自動テスト3/3成功、diffチェック成功。描画・実入力は対象外。 | 実装済み・未確認 | `Source/WEVORA/Tests/WEVORASpellWeavingTests.cpp`, `PROGRESS.md` | Niagara素材設定、PIE確認、Playerビルド |
 | 2026-10-04-03 | コミット・Push依頼に伴い変更範囲、現在ブランチfeature/spell-weaving-prototype、origin、diffチェックを確認。今回の実装・テスト・文書11ファイルをコミット対象とした。 | 調査完了 | 今回の関連11ファイル | コミット・Push、リモートHEAD一致確認 |
 | 2026-10-04-04 | 浮遊敵と弾のC++/配置用Blueprint、HealthComponent、生成スクリプト、配置手順、自動テストを追加。Editorビルド成功・Headless 4/4成功。初回のdebug表示キー型のビルドエラーを修正。初回AIテストのGameMode不在によるPlayerState/被弾初期化不足をテストWorldの初期化で修正。BRAINの対象プロジェクト名ファイル検索で関連ノートなし。 | 実装済み・未確認 | `Source/WEVORA/AI/*`, `Source/WEVORA/WEVORACharacter.h/.cpp`, `Source/WEVORA/Tests/WEVORAEnemyTests.cpp`, `Content/WEVORA/AI/*.uasset`, `Scripts/create_enemy_blueprints.py`, `PROGRESS.md` | Editor再起動、配置とPIE確認、Playerビルド |
+| 2026-10-04-05 | 選択エフェクトの位置報告を受けC++の取り付け先と初期オフセットを確認。Mesh相対の固定位置で手のソケットへは未接続。希望位置を確認中、位置のコード変更は未実施。 | 調査完了 | `PROGRESS.md` | 希望位置の回答、Blueprint実設定とPIE位置の確認、必要な修正 |
 | 2026-10-04-05 | 必要な区切りでのコミット許可を記録。敵AIの関連14ファイルをコミット対象として確認。前回Editorビルド成功・Headless 4/4成功の記録を確認。 | 調査完了 | 敵AIの関連14ファイル | コミット、PIE確認 |
+| 2026-10-04-06 | 選択切替は体、編み中は右手に表示する構成へ分離。属性別SelectionSystem、BodyOffset/HandOffset/HandSocketNameを追加。旧Blueprintの固定位置もBeginPlayで右手相対へ置換。初回は開いたEditorのDLLロックでLNK1104、ユーザーが保存・終了後の再ビルド成功。実キャラクターの右手取り付けを含むHeadless魔法4/4成功、テスト警告0。 | 実装済み・未確認 | `Source/WEVORA/Spell/WEVORASpellSelectionEffectComponent.h/.cpp`, `Source/WEVORA/WEVORACharacter.cpp`, `Source/WEVORA/Tests/WEVORASpellWeavingTests.cpp`, `Source/WEVORA/Spell/README.md`, `PROGRESS.md` | Editorを開き直しPIEで体の切替演出と右手追従を確認 |
+| 2026-10-04-07 | ユーザーのコミット・Push依頼に伴い、体側の切替演出と右手追従の関連6ファイル、現在ブランチとorigin、diffチェックを確認。直前のEditorビルド成功・魔法テスト4/4成功を引き継ぐ。 | 調査完了 | 今回の関連6ファイル | コミット・Push、リモートHEAD一致確認、PIE確認 |

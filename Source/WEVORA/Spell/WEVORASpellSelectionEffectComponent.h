@@ -17,6 +17,9 @@ struct WEVORA_API FWEVORASpellSelectionEffect
 	/** Optional looping system. User parameters are listed in Spell/README.md. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
 	TObjectPtr<UNiagaraSystem> System = nullptr;
+	/** Body pulse on element change; falls back to System when unset. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
+	TObjectPtr<UNiagaraSystem> SelectionSystem = nullptr;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
 	FLinearColor Color = FLinearColor::White;
 };
@@ -30,8 +33,17 @@ public:
 	UWEVORASpellSelectionEffectComponent();
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Effects")
 	TMap<EWEVORASpellElement, FWEVORASpellSelectionEffect> ElementEffects;
-	/** A short preview when Q is pressed outside weaving. Zero disables it. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Effects", meta=(ClampMin="0.0"))
+	/** Right-hand bone or socket on the character mesh. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Effects|Attachment")
+	FName HandSocketName = TEXT("hand_r");
+	/** Transform relative to the hand, reapplied at BeginPlay to replace legacy mesh offsets. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Effects|Attachment")
+	FTransform HandOffset = FTransform::Identity;
+	/** Element-change pulse relative to the character mesh, independent of the hand. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Effects|Attachment")
+	FTransform BodyOffset = FTransform(FRotator::ZeroRotator, FVector(0.0f, 0.0f, 110.0f));
+	/** Body preview duration on every element change. Zero disables it. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Effects", meta=(ClampMin="0.0", DisplayName="Selection Preview Duration"))
 	float IdlePreviewDuration = 0.35f;
 	/** Asset-free placeholder glow, also usable alongside Niagara. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Effects")
@@ -44,7 +56,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Spell|Effects")
 	void RefreshEffect();
 	UFUNCTION(BlueprintPure, Category="Spell|Effects")
-	bool IsPreviewActive() const { return bPreviewActive; }
+	bool IsPreviewActive() const { return bPreviewActive || bBodyPreviewActive; }
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -55,11 +67,18 @@ private:
 	TObjectPtr<UNiagaraComponent> Niagara;
 	UPROPERTY(Transient)
 	TObjectPtr<UPointLightComponent> PreviewLight;
+	UPROPERTY(Transient)
+	TObjectPtr<UNiagaraComponent> BodyNiagara;
+	UPROPERTY(Transient)
+	TObjectPtr<UPointLightComponent> BodyLight;
 	FTimerHandle IdlePreviewTimer;
 	EWEVORASpellElement LastElement = EWEVORASpellElement::Fire;
 	bool bPreviewActive = false;
+	bool bBodyPreviewActive = false;
 	UFUNCTION()
 	void HandlePresentationChanged(EWEVORAWeavingState State, const FWEVORASpellContext& Context);
 	void StopPreview();
+	void ShowBodyPreview(const FWEVORASpellContext& Context);
+	void StopBodyPreview();
 	void ApplyEffect(EWEVORAWeavingState State, const FWEVORASpellContext& Context);
 };
