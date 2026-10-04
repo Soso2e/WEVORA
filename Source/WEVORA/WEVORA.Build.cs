@@ -13,6 +13,7 @@ public class WEVORA : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
+			"Niagara",
 			"InputCore",
 			"EnhancedInput",
 			"AIModule",

@@ -13,13 +13,21 @@
 #include "InputActionValue.h"
 #include "InputCoreTypes.h"
 #include "WEVORA.h"
+#include "AI/WEVORAHealthComponent.h"
+#include "Spell/WEVORASpellWeavingComponent.h"
+#include "Spell/WEVORASpellSelectionEffectComponent.h"
 
 AWEVORACharacter::AWEVORACharacter()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	HealthComponent = CreateDefaultSubobject<UWEVORAHealthComponent>(TEXT("HealthComponent"));
+	HealthComponent->bShowDamageFeedback = true;
+	SpellWeavingComponent = CreateDefaultSubobject<UWEVORASpellWeavingComponent>(TEXT("SpellWeavingComponent"));
 
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
+	SpellSelectionEffectComponent = CreateDefaultSubobject<UWEVORASpellSelectionEffectComponent>(TEXT("SpellSelectionEffectComponent"));
+	SpellSelectionEffectComponent->SetupAttachment(GetMesh(), TEXT("hand_r"));
 
 	// Keep the character upright. Rotation follows planar travel while the camera remains independent.
 	bUseControllerRotationPitch = false;
@@ -66,6 +74,12 @@ AWEVORACharacter::AWEVORACharacter()
 	FollowCamera->bUsePawnControlRotation = false;
 }
 
+void AWEVORACharacter::UnPossessed()
+{
+	SpellWeavingComponent->CancelWeave();
+	Super::UnPossessed();
+}
+
 void AWEVORACharacter::BeginPlay()
 {
 	Super::BeginPlay();
@@ -108,6 +122,13 @@ void AWEVORACharacter::Tick(float DeltaSeconds)
 
 void AWEVORACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
+	PlayerInputComponent->BindKey(EKeys::Y, IE_Pressed, this, &AWEVORACharacter::DoRecenterView).bConsumeInput = false;
+	// Asset-free fallback; Blueprint/Enhanced Input may also call the component API.
+	PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, SpellWeavingComponent, &UWEVORASpellWeavingComponent::BeginWeave).bConsumeInput = false;
+	PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Released, SpellWeavingComponent, &UWEVORASpellWeavingComponent::ReleaseWeave).bConsumeInput = false;
+	PlayerInputComponent->BindKey(EKeys::Q, IE_Pressed, SpellWeavingComponent, &UWEVORASpellWeavingComponent::CycleElement).bConsumeInput = false;
+	PlayerInputComponent->BindKey(EKeys::E, IE_Pressed, SpellWeavingComponent, &UWEVORASpellWeavingComponent::BeginShape).bConsumeInput = false;
+	PlayerInputComponent->BindKey(EKeys::E, IE_Released, SpellWeavingComponent, &UWEVORASpellWeavingComponent::EndShape).bConsumeInput = false;
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
 		// The original template jump input becomes WEVORA's ascend control.
@@ -197,10 +218,20 @@ void AWEVORACharacter::DoMove(float Right, float Forward)
 
 void AWEVORACharacter::DoLook(float Yaw, float Pitch)
 {
+	SpellWeavingComponent->RecordLook(FVector2D(Yaw, Pitch));
 	if (GetController())
 	{
 		AddControllerYawInput(Yaw);
 		AddControllerPitchInput(Pitch);
+	}
+}
+
+void AWEVORACharacter::DoRecenterView()
+{
+	if (AController* ViewController = GetController())
+	{
+		// Set the view directly: recentering is not mouse input for spell gestures.
+		ViewController->SetControlRotation(FRotator(0.0f, GetActorRotation().Yaw, 0.0f));
 	}
 }
 
