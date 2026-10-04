@@ -31,6 +31,36 @@ struct WEVORA_API FWEVORASpellContext
 	float GestureDuration = 0.0f;
 };
 
+/** Resolved runtime behaviour, separate from gesture recognition and named spells. */
+USTRUCT(BlueprintType)
+struct WEVORA_API FWEVORASpellProjectileParameters
+{
+	GENERATED_BODY()
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="1"))
+	float Speed = 2200.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="0"))
+	float Damage = 25.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="1"))
+	float Radius = 16.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="0.1"))
+	float Lifetime = 4.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
+	FLinearColor Color = FLinearColor(1.0f, 0.15f, 0.02f);
+};
+
+/** Immutable cast snapshot: composition + world-space direction + resolved behaviour. */
+USTRUCT(BlueprintType)
+struct WEVORA_API FWEVORASpellLaunch
+{
+	GENERATED_BODY()
+	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	FWEVORASpellContext Composition;
+	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	FVector Direction = FVector::ForwardVector;
+	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	FWEVORASpellProjectileParameters Parameters;
+};
+
 USTRUCT(BlueprintType)
 struct WEVORA_API FWEVORAGestureThresholds
 {

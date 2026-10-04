@@ -16,6 +16,7 @@
 #include "AI/WEVORAHealthComponent.h"
 #include "Spell/WEVORASpellWeavingComponent.h"
 #include "Spell/WEVORASpellSelectionEffectComponent.h"
+#include "Spell/WEVORASpellCastComponent.h"
 #include "Movement/WEVORAFlightMovementComponent.h"
 #include "Movement/WEVORAManaComponent.h"
 #include "Engine/Engine.h"
@@ -28,6 +29,7 @@ AWEVORACharacter::AWEVORACharacter(const FObjectInitializer& ObjectInitializer)
 	HealthComponent->bShowDamageFeedback = true;
 	ManaComponent = CreateDefaultSubobject<UWEVORAManaComponent>(TEXT("ManaComponent"));
 	SpellWeavingComponent = CreateDefaultSubobject<UWEVORASpellWeavingComponent>(TEXT("SpellWeavingComponent"));
+	SpellCastComponent = CreateDefaultSubobject<UWEVORASpellCastComponent>(TEXT("SpellCastComponent"));
 
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);

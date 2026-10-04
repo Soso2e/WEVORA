@@ -30,7 +30,8 @@ void UWEVORAHealthComponent::ReceiveDamage(AActor* DamagedActor, float Damage,
 	if (bShowDamageFeedback && GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(static_cast<uint64>(GetUniqueID()), 2.0f, FColor::Red,
-			FString::Printf(TEXT("HP: %.0f / %.0f%s"), Health, MaxHealth, IsAlive() ? TEXT("") : TEXT("  Defeated (restart PIE)")));
+			FString::Printf(TEXT("%s HP: %.0f / %.0f%s"), *GetNameSafe(DamagedActor), Health, MaxHealth,
+				IsAlive() ? TEXT("") : TEXT("  Defeated (restart PIE)")));
 	}
 	if (!IsAlive())
 	{

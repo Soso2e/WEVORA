@@ -12,6 +12,7 @@ class UCameraComponent;
 class UInputAction;
 class UWEVORASpellWeavingComponent;
 class UWEVORASpellSelectionEffectComponent;
+class UWEVORASpellCastComponent;
 class UWEVORAHealthComponent;
 class UWEVORAManaComponent;
 struct FInputActionValue;
@@ -55,6 +56,8 @@ public:
 	UWEVORASpellWeavingComponent* SpellWeavingComponent;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Spell")
 	UWEVORASpellSelectionEffectComponent* SpellSelectionEffectComponent;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Spell")
+	UWEVORASpellCastComponent* SpellCastComponent;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Mana")
 	UWEVORAManaComponent* ManaComponent;
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="WEVORA Movement|State")
