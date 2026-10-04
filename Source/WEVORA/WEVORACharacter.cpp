@@ -16,12 +16,17 @@
 #include "AI/WEVORAHealthComponent.h"
 #include "Spell/WEVORASpellWeavingComponent.h"
 #include "Spell/WEVORASpellSelectionEffectComponent.h"
+#include "Movement/WEVORAFlightMovementComponent.h"
+#include "Movement/WEVORAManaComponent.h"
+#include "Engine/Engine.h"
 
-AWEVORACharacter::AWEVORACharacter()
+AWEVORACharacter::AWEVORACharacter(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<UWEVORAFlightMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
 	PrimaryActorTick.bCanEverTick = true;
 	HealthComponent = CreateDefaultSubobject<UWEVORAHealthComponent>(TEXT("HealthComponent"));
 	HealthComponent->bShowDamageFeedback = true;
+	ManaComponent = CreateDefaultSubobject<UWEVORAManaComponent>(TEXT("ManaComponent"));
 	SpellWeavingComponent = CreateDefaultSubobject<UWEVORASpellWeavingComponent>(TEXT("SpellWeavingComponent"));
 
 	// Set size for collision capsule
@@ -39,8 +44,9 @@ AWEVORACharacter::AWEVORACharacter()
 	Movement->RotationRate = FRotator(0.0f, 620.0f, 0.0f);
 
 	// WEVORA movement intentionally keeps a little inertia.
-	Movement->GravityScale = 0.0f;
+	Movement->GravityScale = FallGravityScale;
 	Movement->AirControl = 1.0f;
+	Movement->AirControlBoostMultiplier = 0.0f;
 	Movement->MaxAcceleration = GlideAcceleration;
 	Movement->MaxFlySpeed = CruiseSpeed;
 	Movement->BrakingDecelerationFlying = GlideBrakingDeceleration;
@@ -49,11 +55,12 @@ AWEVORACharacter::AWEVORACharacter()
 	Movement->BrakingFrictionFactor = 1.0f;
 
 	// Retain sensible walking values in case a future gameplay state temporarily returns to ground mode.
-	Movement->JumpZVelocity = 500.f;
-	Movement->MaxWalkSpeed = 500.f;
+	Movement->JumpZVelocity = JumpLaunchSpeed;
+	Movement->MaxWalkSpeed = GroundSpeed;
 	Movement->MinAnalogWalkSpeed = 20.f;
 	Movement->BrakingDecelerationWalking = 2000.f;
-	Movement->BrakingDecelerationFalling = 1500.0f;
+	Movement->BrakingDecelerationFalling = GlideBrakingDeceleration;
+	Movement->FallingLateralFriction = 0.0f;
 
 	// Create a camera boom (pulls in towards the player if there is a collision)
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
@@ -77,6 +84,7 @@ AWEVORACharacter::AWEVORACharacter()
 void AWEVORACharacter::UnPossessed()
 {
 	SpellWeavingComponent->CancelWeave();
+	ResetFlightInput();
 	Super::UnPossessed();
 }
 
@@ -86,12 +94,19 @@ void AWEVORACharacter::BeginPlay()
 
 	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
 	{
-		Movement->GravityScale = 0.0f;
+		Movement->GravityScale = FallGravityScale;
+		Movement->AirControl = 1.0f;
+		Movement->AirControlBoostMultiplier = 0.0f;
+		Movement->FallingLateralFriction = 0.0f;
+		Movement->BrakingFriction = 0.0f;
 		Movement->MaxAcceleration = GlideAcceleration;
 		Movement->MaxFlySpeed = CruiseSpeed;
-		Movement->BrakingDecelerationFlying = GlideBrakingDeceleration;
-		Movement->SetMovementMode(MOVE_Flying);
+		Movement->MaxWalkSpeed = GroundSpeed;
+		Movement->JumpZVelocity = JumpLaunchSpeed;
+		Movement->BrakingDecelerationFalling = GlideBrakingDeceleration;
+		Movement->SetMovementMode(MOVE_Walking);
 	}
+	AirSpeedLimit = CruiseSpeed;
 
 	if (FollowCamera)
 	{
@@ -103,21 +118,15 @@ void AWEVORACharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	UCharacterMovementComponent* Movement = GetCharacterMovement();
-	if (!Movement)
-	{
-		return;
-	}
-
-	// Keep live-tweakable Blueprint values reflected in the movement component.
-	Movement->MaxAcceleration = GlideAcceleration;
-	Movement->MaxFlySpeed = CruiseSpeed;
-	Movement->BrakingDecelerationFlying = GlideBrakingDeceleration;
-
-	UpdateVerticalMovement(DeltaSeconds);
-	UpdateHover(DeltaSeconds);
-	UpdateBrake(DeltaSeconds);
 	UpdateCameraFeel(DeltaSeconds);
+	if (bShowFlightFeedback && IsLocallyControlled() && GEngine)
+	{
+		const UEnum* StateEnum = StaticEnum<EWEVORAFlightState>();
+		GEngine->AddOnScreenDebugMessage(static_cast<uint64>(GetUniqueID()), 0.1f,
+			ManaComponent->Mana > 0.0f ? FColor::Cyan : FColor::Orange,
+			FString::Printf(TEXT("Mana: %.0f / %.0f | %s"), ManaComponent->Mana, ManaComponent->MaxMana,
+				*StateEnum->GetNameStringByValue(static_cast<int64>(FlightState))));
+	}
 }
 
 void AWEVORACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -131,12 +140,15 @@ void AWEVORACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	PlayerInputComponent->BindKey(EKeys::E, IE_Released, SpellWeavingComponent, &UWEVORASpellWeavingComponent::EndShape).bConsumeInput = false;
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
-		// The original template jump input becomes WEVORA's ascend control.
+		// Tap jumps; a held input takes over as paid ascent after a short delay.
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &AWEVORACharacter::DoAscendStart);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &AWEVORACharacter::DoAscendEnd);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Canceled, this, &AWEVORACharacter::DoAscendEnd);
 
 		// Moving
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AWEVORACharacter::Move);
+		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Completed, this, &AWEVORACharacter::MoveEnded);
+		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Canceled, this, &AWEVORACharacter::MoveEnded);
 
 		// Looking
 		EnhancedInputComponent->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &AWEVORACharacter::Look);
@@ -147,6 +159,7 @@ void AWEVORACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 		{
 			EnhancedInputComponent->BindAction(DescendAction, ETriggerEvent::Started, this, &AWEVORACharacter::DoDescendStart);
 			EnhancedInputComponent->BindAction(DescendAction, ETriggerEvent::Completed, this, &AWEVORACharacter::DoDescendEnd);
+			EnhancedInputComponent->BindAction(DescendAction, ETriggerEvent::Canceled, this, &AWEVORACharacter::DoDescendEnd);
 		}
 		else
 		{
@@ -167,6 +180,7 @@ void AWEVORACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 		{
 			EnhancedInputComponent->BindAction(BrakeAction, ETriggerEvent::Started, this, &AWEVORACharacter::DoBrakeStart);
 			EnhancedInputComponent->BindAction(BrakeAction, ETriggerEvent::Completed, this, &AWEVORACharacter::DoBrakeEnd);
+			EnhancedInputComponent->BindAction(BrakeAction, ETriggerEvent::Canceled, this, &AWEVORACharacter::DoBrakeEnd);
 		}
 		else
 		{
@@ -186,6 +200,11 @@ void AWEVORACharacter::Move(const FInputActionValue& Value)
 	DoMove(MovementVector.X, MovementVector.Y);
 }
 
+void AWEVORACharacter::MoveEnded(const FInputActionValue& Value)
+{
+	DoMove(0.0f, 0.0f);
+}
+
 void AWEVORACharacter::Look(const FInputActionValue& Value)
 {
 	const FVector2D LookAxisVector = Value.Get<FVector2D>();
@@ -194,6 +213,8 @@ void AWEVORACharacter::Look(const FInputActionValue& Value)
 
 void AWEVORACharacter::DoMove(float Right, float Forward)
 {
+	PlanarInputMagnitude = 0.0f;
+	PlanarInputDirection = FVector::ZeroVector;
 	if (!GetController())
 	{
 		return;
@@ -212,7 +233,8 @@ void AWEVORACharacter::DoMove(float Right, float Forward)
 	{
 		DesiredDirection.Normalize();
 		LastPlanarInputDirection = DesiredDirection;
-		AddMovementInput(DesiredDirection, InputMagnitude);
+		PlanarInputDirection = DesiredDirection;
+		PlanarInputMagnitude = InputMagnitude;
 	}
 }
 
@@ -238,18 +260,33 @@ void AWEVORACharacter::DoRecenterView()
 void AWEVORACharacter::DoAscendStart()
 {
 	bAscending = true;
-	bDescending = false;
+	AscendHeldTime = 0.0f;
+	if (!bDescending && GetCharacterMovement()->IsMovingOnGround())
+	{
+		Jump();
+	}
 }
 
 void AWEVORACharacter::DoAscendEnd()
 {
 	bAscending = false;
+	AscendHeldTime = 0.0f;
+	StopJumping();
 }
 
 void AWEVORACharacter::DoDescendStart()
 {
 	bDescending = true;
-	bAscending = false;
+	bJumpLaunchPhase = false;
+	bPoweredLastFrame = false;
+	PassiveFloatRemaining = 0.0f;
+	SteeringGraceRemaining = 0.0f;
+	StopJumping();
+	if (GetCharacterMovement()->IsFalling())
+	{
+		GetCharacterMovement()->GravityScale = DiveGravityScale;
+		GetCharacterMovement()->Velocity.Z = FMath::Min(GetCharacterMovement()->Velocity.Z, -DiveStartSpeed);
+	}
 }
 
 void AWEVORACharacter::DoDescendEnd()
@@ -260,7 +297,7 @@ void AWEVORACharacter::DoDescendEnd()
 void AWEVORACharacter::DoBurst()
 {
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
-	if (!Movement || !GetWorld())
+	if (!Movement || !GetWorld() || !Movement->IsFalling() || bDescending || bBraking)
 	{
 		return;
 	}
@@ -270,8 +307,12 @@ void AWEVORACharacter::DoBurst()
 	{
 		return;
 	}
+	if (ManaComponent->Mana <= 0.0f || !ManaComponent->ConsumeMana(FMath::Max(0.0f, BurstManaCost)))
+	{
+		return;
+	}
 
-	FVector BurstDirection = LastPlanarInputDirection.GetSafeNormal2D();
+	FVector BurstDirection = PlanarInputDirection.GetSafeNormal2D();
 
 	if (BurstDirection.IsNearlyZero())
 	{
@@ -302,6 +343,8 @@ void AWEVORACharacter::DoBurst()
 	}
 
 	LastBurstTime = CurrentTime;
+	AirSpeedLimit = FMath::Max(CruiseSpeed, Movement->Velocity.Size2D());
+	Movement->MaxWalkSpeed = AirSpeedLimit;
 }
 
 void AWEVORACharacter::DoBrakeStart()
@@ -324,78 +367,128 @@ void AWEVORACharacter::DoJumpEnd()
 	DoAscendEnd();
 }
 
-void AWEVORACharacter::UpdateVerticalMovement(float DeltaSeconds)
+void AWEVORACharacter::OnJumped_Implementation()
+{
+	Super::OnJumped_Implementation();
+	bJumpLaunchPhase = true;
+	PassiveFloatRemaining = 0.0f;
+	FlightState = EWEVORAFlightState::Jumping;
+}
+
+void AWEVORACharacter::ResetFlightInput()
+{
+	bAscending = bDescending = bBraking = false;
+	bJumpLaunchPhase = bPoweredLastFrame = false;
+	PlanarInputDirection = FVector::ZeroVector;
+	PlanarInputMagnitude = AscendHeldTime = SteeringGraceRemaining = PassiveFloatRemaining = 0.0f;
+	StopJumping();
+	ConsumeMovementInputVector();
+	GetCharacterMovement()->GravityScale = FallGravityScale;
+}
+
+void AWEVORACharacter::UpdateFlightBeforeMovement(float DeltaSeconds)
 {
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
-	if (!Movement)
+	if (!Movement || DeltaSeconds <= 0.0f)
 	{
 		return;
 	}
 
-	float VerticalInput = 0.0f;
-	if (bAscending)
+	// Falling mode retains Unreal's swept collision, ceiling response, floor detection and landing.
+	// Only vertical support changes; planar speed is independent of climb/dive speed.
+	Movement->MaxAcceleration = FMath::Max(0.0f, GlideAcceleration);
+	Movement->JumpZVelocity = FMath::Max(0.0f, JumpLaunchSpeed);
+	Movement->BrakingDecelerationFalling = FMath::Max(0.0f, GlideBrakingDeceleration);
+	const bool bGrounded = Movement->IsMovingOnGround();
+	ManaComponent->UpdateRecovery(DeltaSeconds, bGrounded);
+	AscendHeldTime = bAscending ? AscendHeldTime + DeltaSeconds : 0.0f;
+	AirSpeedLimit = FMath::FInterpConstantTo(AirSpeedLimit, FMath::Max(0.0f, CruiseSpeed),
+		DeltaSeconds, FMath::Max(0.0f, BurstSpeedDecay));
+	Movement->MaxWalkSpeed = bGrounded ? FMath::Max(0.0f, GroundSpeed) : AirSpeedLimit;
+
+	const bool bSteering = PlanarInputMagnitude > KINDA_SMALL_NUMBER;
+	if (bSteering && !bBraking)
 	{
-		VerticalInput += 1.0f;
+		AddMovementInput(PlanarInputDirection, PlanarInputMagnitude);
 	}
-	if (bDescending)
+	UpdateBrake(DeltaSeconds);
+
+	if (bGrounded)
 	{
-		VerticalInput -= 1.0f;
+		FlightState = EWEVORAFlightState::Grounded;
+		Movement->GravityScale = FallGravityScale;
+		bJumpLaunchPhase = bPoweredLastFrame = false;
+		PassiveFloatRemaining = SteeringGraceRemaining = 0.0f;
+		AirSpeedLimit = FMath::Max(0.0f, CruiseSpeed);
+		return;
 	}
 
-	if (!FMath::IsNearlyZero(VerticalInput))
+	if (!Movement->IsFalling()) { return; }
+	if (bDescending)
 	{
-		AddMovementInput(FVector::UpVector, VerticalInput * VerticalInputScale);
+		FlightState = EWEVORAFlightState::Diving;
+		Movement->GravityScale = FMath::Max(FallGravityScale, DiveGravityScale);
+		bJumpLaunchPhase = bPoweredLastFrame = false;
+		PassiveFloatRemaining = SteeringGraceRemaining = 0.0f;
+		return;
+	}
+
+	SteeringGraceRemaining = bSteering ? FMath::Max(0.0f, SteeringGraceDuration) :
+		FMath::Max(0.0f, SteeringGraceRemaining - DeltaSeconds);
+	const bool bWantsAscent = bAscending && AscendHeldTime >= AscendHoldDelay;
+	// Do not erase a tap jump's upward impulse when WASD is already held.
+	if (bJumpLaunchPhase && Movement->Velocity.Z > 120.0f && !bWantsAscent && !bBraking)
+	{
+		FlightState = EWEVORAFlightState::Jumping;
+		Movement->GravityScale = FMath::Max(0.0f, FallGravityScale);
+		return;
+	}
+	if (bJumpLaunchPhase)
+	{
+		bJumpLaunchPhase = false;
+		PassiveFloatRemaining = FMath::Max(0.0f, PassiveFloatDuration) + FMath::Max(0.0f, GravityReturnDuration);
+	}
+
+	const bool bWantsSupport = bHoverEnabled && (bWantsAscent || bBraking || bSteering || SteeringGraceRemaining > 0.0f);
+	const float ManaRate = FMath::Max(0.0f, bWantsAscent ? AscendManaPerSecond : HoverManaPerSecond);
+	if (bWantsSupport && ManaComponent->Mana > 0.0f && ManaComponent->ConsumeMana(ManaRate * DeltaSeconds))
+	{
+		FlightState = bWantsAscent ? EWEVORAFlightState::Ascending : EWEVORAFlightState::Hovering;
+		Movement->GravityScale = 0.0f;
+		const float TargetZ = bWantsAscent ? FMath::Max(0.0f, AscendSpeed) : 0.0f;
+		const float Response = 1.0f - FMath::Exp(-FMath::Max(0.0f, VerticalVelocityDamping) * DeltaSeconds);
+		const float MaxDelta = FMath::Max(0.0f, MaxHoverAcceleration) * DeltaSeconds;
+		Movement->Velocity.Z += FMath::Clamp((TargetZ - Movement->Velocity.Z) * Response, -MaxDelta, MaxDelta);
+		bPoweredLastFrame = true;
+		PassiveFloatRemaining = 0.0f;
+		return;
+	}
+
+	if (bWantsSupport || (bPoweredLastFrame && ManaComponent->Mana <= 0.0f))
+	{
+		// Empty mana must lead directly to falling, without repeated free float resets.
+		PassiveFloatRemaining = SteeringGraceRemaining = 0.0f;
+	}
+	else if (bPoweredLastFrame)
+	{
+		PassiveFloatRemaining = FMath::Max(0.0f, PassiveFloatDuration) + FMath::Max(0.0f, GravityReturnDuration);
+	}
+	bPoweredLastFrame = false;
+	if (PassiveFloatRemaining > 0.0f)
+	{
+		const float ReturnDuration = FMath::Max(0.0f, GravityReturnDuration);
+		const float ReturnAlpha = ReturnDuration > 0.0f ?
+			1.0f - FMath::Clamp(PassiveFloatRemaining / ReturnDuration, 0.0f, 1.0f) : 0.0f;
+		Movement->GravityScale = FMath::Lerp(FMath::Max(0.0f, PassiveGravityScale),
+			FMath::Max(0.0f, FallGravityScale), ReturnAlpha);
+		PassiveFloatRemaining = FMath::Max(0.0f, PassiveFloatRemaining - DeltaSeconds);
+		FlightState = EWEVORAFlightState::Coasting;
 	}
 	else
 	{
-		// Preserve some rise/fall momentum, then gently settle instead of stopping instantly.
-		Movement->Velocity.Z = FMath::FInterpTo(
-			Movement->Velocity.Z,
-			0.0f,
-			DeltaSeconds,
-			VerticalVelocityDamping);
+		Movement->GravityScale = FMath::Max(0.0f, FallGravityScale);
+		FlightState = EWEVORAFlightState::Falling;
 	}
-}
-
-void AWEVORACharacter::UpdateHover(float DeltaSeconds)
-{
-	if (!bHoverEnabled || bAscending || bDescending || !GetWorld())
-	{
-		return;
-	}
-
-	UCharacterMovementComponent* Movement = GetCharacterMovement();
-	if (!Movement)
-	{
-		return;
-	}
-
-	const float CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-	const FVector TraceStart = GetActorLocation();
-	const float TraceLength = CapsuleHalfHeight + HoverHeight + HoverTraceExtraDistance;
-	const FVector TraceEnd = TraceStart - FVector::UpVector * TraceLength;
-
-	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(WEVORAHoverTrace), false, this);
-	FHitResult Hit;
-
-	if (!GetWorld()->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_Visibility, QueryParams))
-	{
-		return;
-	}
-
-	const float GroundGap = FMath::Max(0.0f, Hit.Distance - CapsuleHalfHeight);
-	const float HeightError = HoverHeight - GroundGap;
-
-	const float RequestedAcceleration =
-		(HeightError * HoverSpringStrength) -
-		(Movement->Velocity.Z * HoverSpringDamping);
-
-	const float HoverAcceleration = FMath::Clamp(
-		RequestedAcceleration,
-		-MaxHoverAcceleration,
-		MaxHoverAcceleration);
-
-	Movement->Velocity.Z += HoverAcceleration * DeltaSeconds;
 }
 
 void AWEVORACharacter::UpdateBrake(float DeltaSeconds)
@@ -407,11 +500,9 @@ void AWEVORACharacter::UpdateBrake(float DeltaSeconds)
 
 	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
 	{
-		Movement->Velocity = FMath::VInterpTo(
-			Movement->Velocity,
-			FVector::ZeroVector,
-			DeltaSeconds,
-			BrakeInterpSpeed);
+		const float RetainedSpeed = FMath::Exp(-FMath::Max(0.0f, BrakeInterpSpeed) * DeltaSeconds);
+		Movement->Velocity.X *= RetainedSpeed;
+		Movement->Velocity.Y *= RetainedSpeed;
 	}
 }
 

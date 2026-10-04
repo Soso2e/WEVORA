@@ -13,9 +13,22 @@ class UInputAction;
 class UWEVORASpellWeavingComponent;
 class UWEVORASpellSelectionEffectComponent;
 class UWEVORAHealthComponent;
+class UWEVORAManaComponent;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
+
+UENUM(BlueprintType)
+enum class EWEVORAFlightState : uint8
+{
+	Grounded,
+	Jumping,
+	Coasting,
+	Hovering,
+	Ascending,
+	Diving,
+	Falling
+};
 
 /**
  * WEVORA player character.
@@ -42,10 +55,17 @@ public:
 	UWEVORASpellWeavingComponent* SpellWeavingComponent;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Spell")
 	UWEVORASpellSelectionEffectComponent* SpellSelectionEffectComponent;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Mana")
+	UWEVORAManaComponent* ManaComponent;
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="WEVORA Movement|State")
+	EWEVORAFlightState FlightState = EWEVORAFlightState::Grounded;
+
+	/** Called by the movement component before physics, never from the actor's post-movement Tick. */
+	void UpdateFlightBeforeMovement(float DeltaSeconds);
 
 protected:
 
-	/** Existing jump action is reused as Ascend for the movement prototype. */
+	/** Tap to jump; hold to ascend using mana. */
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* JumpAction;
 
@@ -73,29 +93,27 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Input|WEVORA Movement")
 	UInputAction* BrakeAction;
 
-	/** Enable the ground-aware hover spring. */
+	/** Allow mana-powered altitude support; gravity still applies when support is disabled. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Hover")
 	bool bHoverEnabled = true;
 
-	/** Desired gap between the capsule bottom and the surface below. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Hover", meta=(ClampMin="0.0"))
-	float HoverHeight = 55.0f;
-
-	/** Extra distance below the desired hover height used to search for ground. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Hover", meta=(ClampMin="0.0"))
-	float HoverTraceExtraDistance = 180.0f;
-
-	/** Spring response toward HoverHeight. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Hover", meta=(ClampMin="0.0"))
-	float HoverSpringStrength = 18.0f;
-
-	/** Vertical damping applied by the hover spring. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Hover", meta=(ClampMin="0.0"))
-	float HoverSpringDamping = 6.5f;
-
-	/** Maximum vertical acceleration the hover spring may apply. */
+	/** Maximum acceleration when catching a fall or changing powered climb speed. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Hover", meta=(ClampMin="0.0"))
 	float MaxHoverAcceleration = 2200.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Hover", meta=(ClampMin="0.0"))
+	float HoverManaPerSecond = 8.0f;
+	/** Brief paid support after releasing planar input, for direction changes. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Hover", meta=(ClampMin="0.0"))
+	float SteeringGraceDuration = 0.2f;
+	/** Unpowered float near the jump apex or after releasing powered flight. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Hover", meta=(ClampMin="0.0"))
+	float PassiveFloatDuration = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Hover", meta=(ClampMin="0.0"))
+	float PassiveGravityScale = 0.12f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Hover", meta=(ClampMin="0.0"))
+	float GravityReturnDuration = 0.35f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Ground", meta=(ClampMin="0.0"))
+	float GroundSpeed = 500.0f;
 
 	/** Base free-flight speed. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Glide", meta=(ClampMin="0.0"))
@@ -109,21 +127,38 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Glide", meta=(ClampMin="0.0"))
 	float GlideBrakingDeceleration = 220.0f;
 
-	/** Vertical input strength while ascending / descending. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Vertical", meta=(ClampMin="0.0"))
-	float VerticalInputScale = 0.85f;
+	float JumpLaunchSpeed = 900.0f;
+	/** Separates a free tap jump from a paid held ascent. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Vertical", meta=(ClampMin="0.0"))
+	float AscendHoldDelay = 0.2f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Vertical", meta=(ClampMin="0.0"))
+	float AscendSpeed = 1000.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Vertical", meta=(ClampMin="0.0"))
+	float AscendManaPerSecond = 18.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Vertical", meta=(ClampMin="0.0"))
+	float FallGravityScale = 1.2f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Vertical", meta=(ClampMin="0.0"))
+	float DiveGravityScale = 2.4f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Vertical", meta=(ClampMin="0.0"))
+	float DiveStartSpeed = 300.0f;
 
-	/** How quickly free vertical motion settles after releasing vertical input. */
+	/** Damping response while powered flight approaches its target vertical speed. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Vertical", meta=(ClampMin="0.0"))
-	float VerticalVelocityDamping = 2.2f;
+	float VerticalVelocityDamping = 4.5f;
 
 	/** Instant planar speed added by Burst. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Burst", meta=(ClampMin="0.0"))
-	float BurstImpulse = 950.0f;
+	float BurstImpulse = 1800.0f;
 
 	/** Maximum planar speed immediately after Burst. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Burst", meta=(ClampMin="0.0"))
-	float BurstMaxSpeed = 2200.0f;
+	float BurstMaxSpeed = 3200.0f;
+	/** Air speed ceiling relaxes toward cruise at this rate; no instant post-burst clamp. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Burst", meta=(ClampMin="0.0"))
+	float BurstSpeedDecay = 650.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Burst", meta=(ClampMin="0.0"))
+	float BurstManaCost = 12.0f;
 
 	/** Seconds before another Burst may be triggered. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Burst", meta=(ClampMin="0.0"))
@@ -144,6 +179,9 @@ protected:
 	/** FOV interpolation speed. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Camera", meta=(ClampMin="0.0"))
 	float CameraFOVInterpSpeed = 5.0f;
+	/** Temporary resource/state feedback, replaceable by a Blueprint HUD. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Feedback")
+	bool bShowFlightFeedback = true;
 
 	/** True while ascend input is held. */
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="WEVORA Movement|State")
@@ -157,23 +195,32 @@ protected:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="WEVORA Movement|State")
 	bool bBraking = false;
 
-	/** Last requested planar direction, used by Burst. */
+	/** Last steering direction, retained for Blueprint feedback. Burst uses current input or velocity. */
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="WEVORA Movement|State")
 	FVector LastPlanarInputDirection = FVector::ForwardVector;
 
 	/** Time of the most recent burst. */
 	float LastBurstTime = -1000.0f;
+	FVector PlanarInputDirection = FVector::ZeroVector;
+	float PlanarInputMagnitude = 0.0f;
+	float AscendHeldTime = 0.0f;
+	float SteeringGraceRemaining = 0.0f;
+	float PassiveFloatRemaining = 0.0f;
+	float AirSpeedLimit = 1200.0f;
+	bool bJumpLaunchPhase = false;
+	bool bPoweredLastFrame = false;
 
 public:
 
 	/** Constructor */
-	AWEVORACharacter();
+	AWEVORACharacter(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
 	/** Cancel unfinished spell input when control leaves this pawn. */
 	virtual void UnPossessed() override;
 
-	/** Update hover, vertical control, braking and camera feel. */
+	/** Update camera and feedback after movement. */
 	virtual void Tick(float DeltaSeconds) override;
+	virtual void OnJumped_Implementation() override;
 
 protected:
 
@@ -185,18 +232,14 @@ protected:
 
 	/** Called for movement input */
 	void Move(const FInputActionValue& Value);
+	void MoveEnded(const FInputActionValue& Value);
 
 	/** Called for looking input */
 	void Look(const FInputActionValue& Value);
 
-	/** Ground-aware hover force. */
-	void UpdateHover(float DeltaSeconds);
-
-	/** Manual up/down movement and vertical damping. */
-	void UpdateVerticalMovement(float DeltaSeconds);
-
-	/** Strong deceleration while Brake is held. */
+	/** Planar braking never suppresses gravity or a Ctrl dive. */
 	void UpdateBrake(float DeltaSeconds);
+	void ResetFlightInput();
 
 	/** Speed-reactive camera FOV. */
 	void UpdateCameraFeel(float DeltaSeconds);
