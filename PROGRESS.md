@@ -79,3 +79,16 @@
 | 2026-10-05-01 | 飛行改善の操作案を現行Characterの入力・重力・ホバー・加速と照合。無入力時の自然落下、入力によるマナ消費ホバー、静止詠唱時の操作を検討。BRAINのWEVORA対象検索では関連ノートなし。コード変更・ビルド・PIE確認は未実施。 | 調査完了 | `PROGRESS.md` | 静止ホバーとマナ仕様を整理し、実装後PIEで操作感を確認 |
 | 2026-10-05-02 | `fix/inertial-mana-flight`を作成。慣性ジャンプ/浮遊/自然落下、マナホバー/上昇、Ctrl優先、Shift強化、Alt静止ホバー、マナ地上回復、入力解除、調整・ユーザー確認手順を追加。初回テストビルドのfloat/double曖昧オーバーロードを修正。初回HeadlessはテストControllerのローカル判定不足で飛行3件失敗、テスト環境を明示ローカル化・EndPlayを追加して飛行4/4成功。最終Editorビルド成功・全9/9成功・テスト警告0。関連9ファイルをコミット対象とし、PIE/実機検証はユーザー担当。 | 実装済み・未確認 | `Source/WEVORA/WEVORACharacter.h/.cpp`, `Source/WEVORA/Movement/*`, `Source/WEVORA/Tests/WEVORAFlightTests.cpp`, `PROGRESS.md` | ユーザーのPIE確認と値調整 |
 | 2026-10-05-03 | 共通SpellCastComponent/Projectile/LaunchでFire/Wind認識→空中Cast→実sweep→既存Enemy HP減少を接続。既存最初のマップへ敵1体を保存・再読込確認。仮球/色付きライト、Actor名付き仮HP、操作手順を追加。初回テストビルドのTObjectPtr引数を修正。配置Pythonのbool名を修正。初回戦闘テストはHP減少を確認したがテスト環境にLocalPlayerがなくCameraManager更新が止まり方向/壁確認が失敗、テスト側のカメラ計算を明示して解消。最終Editorビルド成功、Headless全11/11成功・テスト警告0。初回の環境音声警告は今回対象外のため最終は-nosoundで実行。実プレイ/Playerは未確認。 | 実装済み・未確認 | `Source/WEVORA/Spell/WEVORASpellCastComponent.*`, `WEVORASpellProjectile.*`, `WEVORASpellTypes.h`, `Source/WEVORA/WEVORACharacter.*`, `AI/WEVORAHealthComponent.cpp`, `Tests/WEVORASpellCombatTests.cpp`, `Spell/README.md`, `AI/README.md`, `Scripts/place_combat_enemy.py`, `Content/ThirdPerson/Lvl_ThirdPerson.umap`, マップ外部Actor, `PROGRESS.md` | 人間が既存マップで飛行→編み→Cast→命中→HP減少を確認 |
+
+
+## 2026-10-05 軽量化ベースライン（perf/lean-desktop-baseline）
+
+- main `fafea82` をfetch/fast-forward確認後、専用ブランチを作成。mainへ直接マージしない。
+- 製品ベースラインのHardware RT / Lumen Hardware RT / RT Proxy / HWRT Translucent Refraction / Path Tracingを無効化。無効化に伴うRT限定overrideとWindows RHI重複を整理。
+- ModelingToolsEditorModeを無効化。Desktopで不要なAndroid File Serverのサービス/ネットワークを無効化し、古いテンプレート名・Editor参照を整理。
+- Mac Editor限定のMedium/Low起動、参照監査、LFS実サイズを考慮した比較スクリプトと `Docs/Optimization.md` を追加。
+- Niagara / Lumen Software tracing / Mesh Distance Fields / Nanite / VSM / VT / SkyAtmosphere維持。UMG/Slateは現行Controllerで使用しているため維持。コア戦闘C++と全バイナリAssetは変更なし。
+- UE_ROOTの実体なし。ユーザーから「ないので、ビルドはスキップで構いません」と回答を受領。Editor Build・既存11テスト・Asset load・Shader compileは未実行。以前の成功記録を今回の成功として扱わない。
+- Asset Registryによる参照証明ができないためVariant 591ファイルは未削除。依存するStateTreeモジュール/Plugin/IncludePath維持。Substrate・Volume/Water/RVT/Local Fog等も未使用を証明できず維持。
+- 検証: Python構文、Mac起動dry-run、LFS fsck、設定/保護Asset一致、git diffチェック。UE APIの実行互換性は未検証。16GB動作・メモリ/Shader削減数は未測定。
+- 次: UE 5.8上で参照監査、Build/全11テスト、Map/Blueprintロードと実RHI Shader検証。人間側で飛行・編み・Cast・命中HP低下と見た目を確認。詳細/再現手順/数値は `Docs/Optimization.md`。
