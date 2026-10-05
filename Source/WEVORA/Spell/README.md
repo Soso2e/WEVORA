@@ -22,7 +22,68 @@ bShowDebugで画面表示、bLogEventsでイベントログを無効にできま
 OnSpellCastをBlueprintでBindし、Contextを受け取って後続処理を追加できます。
 Enhanced InputのStarted/Completed/Canceledからも公開APIを呼び出せます。
 将来キーをActionへ移行する場合はCharacterの同じBindKeyを除去して二重入力を避けてください。
-ネットワーク同期、ダメージ、発射・着弾VFXは実装していません。
+Cast通知はCharacterの`SpellCastComponent`が購読し、共通Projectileを発射します。
+敵へのダメージ接続は実装済み。ネットワーク同期、正式な発射・着弾VFXは未実装です。
+
+## 最小戦闘ループ（Fire / Wind）
+
+検証マップ: `/Game/ThirdPerson/Lvl_ThirdPerson`（Editor起動時の既存マップ）。
+開始地点の前方約11m、座標`(1100, 0, 452)`に既存の`BP_WEVORAEnemy`を1体保存済み。
+World Outlinerのラベルは`WEVORA_CombatEnemy`。地形とLevel Blueprintは変更していません。
+
+1. 新しいC++ Componentを読み込むためEditorを開き直し、`Lvl_ThirdPerson`でPlay。
+2. Viewportをクリックして入力を受け付ける状態にする。初期属性はFire。QでWind/Fireを切替。
+3. Spaceでジャンプ。必要ならSpace長押しで上昇、空中で左Altを押し続けると減速・静止ホバー。
+   マナが尽きると落下するので、地上で回復して再試行する。
+4. LMBを押したまま、Eを押しながらマウスを横へ動かす。Eを離す。
+   仮デバッグ表示のGestureが`Sweep`、状態が`ReadyToCast`になることを確認。
+5. **LMBはまだ離さず、Eを離した状態で狙い直す。** 敵を画面中央へ合わせてからLMBを離してCast。
+   マウスで編むとカメラも動く既存仕様のため、この狙い直しを挟む。
+6. プレイヤーの前方から球体のProjectileが飛び、敵に命中すると
+   敵のActor名付き`HP: 75 / 100`が約2秒表示される。初期Damageは25なので4発で敵が消える。
+7. QでWindへ切り替えて同じ操作を試す。Windも同じ経路で25ダメージ。
+   敵を倒したらStop → Playで再配置される。死亡画面やリスポーンは未実装。
+8. 未確定でLMBを離すとキャンセルし、発射しない。壁に撃つと球が消え、壁の向こうにはダメージを与えない。
+
+敵は通常どおり追尾・射撃する。狙いやすさだけを先に確認したい場合は、PIEの前に配置した敵の
+`Move Speed=0` / `Attack Interval`を長めに調整できる（本実装では既存の初期値を維持）。
+操作感、動きながらの命中、カメラの狙いやすさ、球の視認性、難易度は人間側で確認する。
+
+### 発射経路と調整
+
+`Input / GestureRecognizer → SpellWeavingComponent / FWEVORASpellContext → OnSpellCast`
+`→ SpellCastComponent::ResolveSpell → FWEVORASpellLaunch → SpellProjectile`
+`→ swept OnHit → ApplyPointDamage → 既存HealthComponent → HP / OnDeath`
+
+- `FWEVORASpellContext`の属性・Gesture・Magnitude・DurationをCastごとにコピー。
+  画面空間のGestureDirectionと、発射用のWorld空間Directionは分離。
+- カメラ中央の最初の衝突点へプレイヤーの視点位置から狙う。空中や横向き移動中も同じ処理。
+  対象なしではカメラ前方100mを狙う。発射前のSphere sweepで近い壁を通り抜けて生成しない。
+- Fire/Windとも`AWEVORASpellProjectile`。`UProjectileMovementComponent`で直進し、壁/対象への
+  最初の衝突で消滅。所有者との衝突は双方向に除外し、寿命消滅時も除外設定を解除。
+- 既存HealthComponentを持つ生存対象へPointDamage。所有者とプレイヤーにはダメージを与えない。
+- `BP_ThirdPersonCharacter`の`SpellCastComponent / ElementParameters`で速度・Damage・Radius・Lifetime・Colorを調整。
+  初期Fire速度2200cm/s、Wind2600cm/s、Damage25、Radius16cm、Lifetime4秒。
+  全Gestureで1発の球。Thrustは速度1.2倍、Circleは半径1.5倍。
+- `ResolveSpell`が最小の挙動決定箇所。今後のEnergy/Modifier/状況はContext/Launchとこの処理へ追加できる。
+  強さは今は一定Damage。魔法のマナ消費、風の特殊効果、属性反応は実装しない。
+- 仮表示はエンジン標準Sphereと属性色のPoint Lightのみ。Niagara/専用素材は不要。
+
+### デバッグと自動確認
+
+- Output Logを`LogWEVORA`で絞ると、既存Castの属性/認識結果、`Spell spawn`、
+  `Spell hit`のActor/Applied Damage/HP、`Spell spawn blocked`を追跡できる。
+- `SpellCastComponent / bLogEvents=false`でSpawn/Hitログを一括停止。
+  編み側の`bLogEvents`/`bShowDebug`、HealthComponentの`bShowDamageFeedback`はそれぞれ独立に無効化可能。
+- `WEVORA.Spell.Combat.AirborneCastToDamage`: 保存済みキャラクター/敵Blueprint、実World tick、
+  空中ホバー中のFire/Wind認識→Cast→実sweep命中→HP減少、視点方向、スナップショット、自己衝突除外。
+- `WEVORA.Spell.Combat.CancelWallsAndLifetime`: 不完全/無効Gesture、近接壁でのSpawn阻止、
+  壁遮断、寿命、衝突除外の片付け、操作解除、終了時購読解除。
+- 最終Editorビルド成功、Headless既存9件＋追加2件＝11/11成功・テスト警告0。
+  自動確認は描画/キーボード/Viewportの証明ではない。Playerビルドも未確認。
+  結果:`Saved/Automation/SpellCombat/index.json`、ログ:`Saved/Logs/SpellCombatAutomation.log`。
+- `Scripts/place_combat_enemy.py`は既存敵がいない場合だけ、この既存マップへ1体追加して保存する。
+  既存敵がいる場合は設定や配置を変えず、保存済みマップの再読込を確認する。
 
 ## 魔法選択エフェクト
 
