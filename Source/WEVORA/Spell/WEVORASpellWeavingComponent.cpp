@@ -34,7 +34,9 @@ void UWEVORASpellWeavingComponent::BeginWeave()
 
 void UWEVORASpellWeavingComponent::CycleElement()
 {
-	Context.Element = Context.Element == EWEVORASpellElement::Fire ? EWEVORASpellElement::Wind : EWEVORASpellElement::Fire;
+	if (AvailableElements.IsEmpty()) { return; }
+	const int32 CurrentIndex = AvailableElements.IndexOfByKey(Context.Element);
+	Context.Element = AvailableElements[(CurrentIndex + 1) % AvailableElements.Num()];
 	if (bLogEvents) { UE_LOG(LogWEVORA, Log, TEXT("Spell element: %s"), *UEnum::GetValueAsString(Context.Element)); }
 	OnSpellPresentationChanged.Broadcast(State, Context);
 }

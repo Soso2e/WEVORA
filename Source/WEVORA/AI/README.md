@@ -34,7 +34,8 @@ BlueprintのClass Defaultsまたは配置した敵のDetailsで調整できま�
 ## 制限・PIE確認
 
 - 初期実装はシングルプレイヤー向け。ネットワーク同期、死亡画面、リスポーンは含みません。HP0後はPIEを再開始してください。
-- Fire/Windの共通Spell Projectileから既存HealthComponentへPointDamageを接続済み。
+- 共通Spell Deliveryから対象のSpellReactionComponentへ接続。FireはDamage / Burning、WindはKnockback / Lift。
+  Damageは既存HealthComponentへ渡す。外力中は追尾・射撃を休止し、終了後に再開。
   `Lvl_ThirdPerson`の開始地点前方に`WEVORA_CombatEnemy`を1体配置済み。
   空中での編み/狙い直し/発射とHP確認は`Source/WEVORA/Spell/README.md`を参照。
 - 障害物を迂回する経路探索はありません。直進移動は衝突で止まり、視線が切れると追尾を停止します。

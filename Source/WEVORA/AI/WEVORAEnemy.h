@@ -8,6 +8,7 @@ class USphereComponent;
 class UStaticMeshComponent;
 class UFloatingPawnMovement;
 class UWEVORAHealthComponent;
+class UWEVORASpellReactionComponent;
 class AWEVORAEnemyProjectile;
 
 /** Floating ranged enemy. Direct swept steering, without a NavMesh dependency. */
@@ -28,6 +29,8 @@ public:
 	TObjectPtr<UFloatingPawnMovement> Movement;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
 	TObjectPtr<UWEVORAHealthComponent> HealthComponent;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
+	TObjectPtr<UWEVORASpellReactionComponent> SpellReactionComponent;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="AI", meta=(ClampMin="0", Units="cm"))
 	float DetectionRange = 3000.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="AI", meta=(ClampMin="0", Units="cm"))

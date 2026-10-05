@@ -1,6 +1,7 @@
 #include "AI/WEVORAEnemy.h"
 #include "AI/WEVORAEnemyProjectile.h"
 #include "AI/WEVORAHealthComponent.h"
+#include "Spell/WEVORASpellReactionComponent.h"
 #include "AIController.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -37,6 +38,7 @@ AWEVORAEnemy::AWEVORAEnemy()
 	Movement->Deceleration = 2400.0f;
 	HealthComponent = CreateDefaultSubobject<UWEVORAHealthComponent>(TEXT("HealthComponent"));
 	HealthComponent->bDestroyOwnerOnDeath = true;
+	SpellReactionComponent = CreateDefaultSubobject<UWEVORASpellReactionComponent>(TEXT("SpellReactionComponent"));
 	ProjectileClass = AWEVORAEnemyProjectile::StaticClass();
 }
 
@@ -68,6 +70,14 @@ void AWEVORAEnemy::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	if (!HasAuthority() || !HealthComponent->IsAlive()) { return; }
+	// Yield steering and attacks to swept reaction displacement; resume normal AI afterward.
+	if (SpellReactionComponent->IsDisplaced())
+	{
+		Movement->StopMovementImmediately();
+		ConsumeMovementInputVector();
+		SetWindupVisual(false);
+		return;
+	}
 	Movement->MaxSpeed = FMath::Max(0.0f, MoveSpeed);
 	if (!IsValidTarget(Target) || !CanSeeTarget())
 	{

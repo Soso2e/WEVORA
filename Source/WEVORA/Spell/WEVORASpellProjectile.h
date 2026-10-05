@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Actor.h"
+#include "Spell/WEVORASpellDelivery.h"
 #include "Spell/WEVORASpellTypes.h"
 #include "WEVORASpellProjectile.generated.h"
 
@@ -12,7 +12,7 @@ class UProjectileMovementComponent;
 
 /** Shared Fire/Wind runtime. Consumes a snapshot, never reads live weaving input. */
 UCLASS(Blueprintable)
-class WEVORA_API AWEVORASpellProjectile : public AActor
+class WEVORA_API AWEVORASpellProjectile : public AWEVORASpellDelivery
 {
 	GENERATED_BODY()
 public:
@@ -25,12 +25,7 @@ public:
 	TObjectPtr<UPointLightComponent> PreviewLight;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
 	TObjectPtr<UProjectileMovementComponent> Movement;
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Spell")
-	FWEVORASpellLaunch Launch;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Debug")
-	bool bLogEvents = true;
-	/** Call between SpawnActorDeferred and FinishSpawningActor. */
-	void InitializeSpell(const FWEVORASpellLaunch& InLaunch);
+	virtual void InitializeSpell_Implementation(const FWEVORASpellLaunch& InLaunch) override;
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

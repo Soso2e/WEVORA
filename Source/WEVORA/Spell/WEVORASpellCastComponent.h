@@ -7,6 +7,7 @@
 
 class UWEVORASpellWeavingComponent;
 class AWEVORASpellProjectile;
+class AWEVORASpellDelivery;
 
 /** Bridges completed composition to runtime behaviour without changing the input state machine. */
 UCLASS(ClassGroup=(WEVORA), meta=(BlueprintSpawnableComponent))
@@ -22,6 +23,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="1"))
 	float AimDistance = 10000.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="0"))
+	float SpellPower = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
+	TMap<EWEVORAGesture, FWEVORASpellShapeProfile> ShapeProfiles;
+	/** Non-projectile deliveries require an explicit implementation. No silent fallback. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
+	TMap<EWEVORASpellDelivery, TSubclassOf<AWEVORASpellDelivery>> DeliveryClasses;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="0"))
 	float SpawnDistance = 80.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Movement", meta=(ClampMin="0", ClampMax="1"))
 	float HorizontalVelocityInheritance = 0.4f;
@@ -33,7 +41,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Debug")
 	bool bLogEvents = true;
 	/** Single small resolution seam for future energy/modifier/situation rules. */
-	bool ResolveSpell(const FWEVORASpellContext& Context, FWEVORASpellProjectileParameters& OutParameters) const;
+	UFUNCTION(BlueprintCallable, Category="Spell")
+	bool ResolveSpell(const FWEVORASpellContext& Context, FWEVORASpellLaunch& OutLaunch) const;
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

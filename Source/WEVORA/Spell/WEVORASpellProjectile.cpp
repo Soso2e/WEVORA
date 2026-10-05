@@ -1,5 +1,4 @@
 #include "Spell/WEVORASpellProjectile.h"
-#include "AI/WEVORAHealthComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
@@ -41,12 +40,11 @@ AWEVORASpellProjectile::AWEVORASpellProjectile()
 	Movement->bShouldBounce = false;
 }
 
-void AWEVORASpellProjectile::InitializeSpell(const FWEVORASpellLaunch& InLaunch)
+void AWEVORASpellProjectile::InitializeSpell_Implementation(const FWEVORASpellLaunch& InLaunch)
 {
-	Launch = InLaunch;
+	Super::InitializeSpell_Implementation(InLaunch);
 	Launch.Direction = Launch.Direction.GetSafeNormal();
 	Launch.Parameters.Speed = FMath::Max(1.0f, Launch.Parameters.Speed);
-	Launch.Parameters.Damage = FMath::Max(0.0f, Launch.Parameters.Damage);
 	Launch.Parameters.Radius = FMath::Max(1.0f, Launch.Parameters.Radius);
 	Launch.Parameters.Lifetime = FMath::Max(0.1f, Launch.Parameters.Lifetime);
 	Collision->SetSphereRadius(Launch.Parameters.Radius);
@@ -79,22 +77,12 @@ void AWEVORASpellProjectile::OnHit(UPrimitiveComponent* HitComponent, AActor* Ot
 	if (bHitConsumed || OtherActor == GetOwner() || OtherActor == GetInstigator()) { return; }
 	bHitConsumed = true;
 	Movement->StopMovementImmediately();
-	UWEVORAHealthComponent* Health = IsValid(OtherActor) ? OtherActor->FindComponentByClass<UWEVORAHealthComponent>() : nullptr;
-	const APawn* OtherPawn = Cast<APawn>(OtherActor);
-	float AppliedDamage = 0.0f;
-	// Existing health is the interaction contract. Never damage another player in this single-player phase.
-	if (HasAuthority() && Health && Health->IsAlive() && (!OtherPawn || !OtherPawn->IsPlayerControlled()))
-	{
-		const float Before = Health->Health;
-		UGameplayStatics::ApplyPointDamage(OtherActor, Launch.Parameters.Damage, Launch.Direction,
-			Hit, GetInstigatorController(), this, UDamageType::StaticClass());
-		AppliedDamage = Before - Health->Health;
-	}
+	const bool bApplied = DeliverToTarget(OtherActor, Hit);
 	if (bLogEvents)
 	{
-		UE_LOG(LogWEVORA, Log, TEXT("Spell hit: actor=%s element=%s gesture=%s appliedDamage=%.1f HP=%.1f"),
-			*GetNameSafe(OtherActor), *UEnum::GetValueAsString(Launch.Composition.Element),
-			*UEnum::GetValueAsString(Launch.Composition.Gesture), AppliedDamage, Health ? Health->Health : -1.0f);
+		UE_LOG(LogWEVORA, Log, TEXT("Spell hit: actor=%s element=%s shape=%s reaction=%s"),
+			*GetNameSafe(OtherActor), *UEnum::GetValueAsString(Launch.Spell.Element),
+			*UEnum::GetValueAsString(Launch.Spell.Shape), bApplied ? TEXT("applied") : TEXT("none"));
 	}
 	Destroy();
 }
