@@ -66,6 +66,9 @@ public:
 	/** Called by the movement component before physics, never from the actor's post-movement Tick. */
 	void UpdateFlightBeforeMovement(float DeltaSeconds);
 
+	/** Called only after the cast component successfully launches a projectile. */
+	void ApplySpellLaunchFeedback(const FVector& Direction, float RecoilSpeed);
+
 protected:
 
 	/** Tap to jump; hold to ascend using mana. */
@@ -170,6 +173,27 @@ protected:
 	/** Velocity interpolation strength while Brake is held. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Brake", meta=(ClampMin="0.0"))
 	float BrakeInterpSpeed = 4.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Spell", meta=(ClampMin="0", ClampMax="1"))
+	float WeavingMovementMultiplier = 0.9f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Spell", meta=(ClampMin="0", ClampMax="1"))
+	float ShapingMovementMultiplier = 0.6f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Spell", meta=(ClampMin="0", ClampMax="1"))
+	float ReadyMovementMultiplier = 0.75f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Spell", meta=(ClampMin="0.01"))
+	float SpellMovementBlendDuration = 0.2f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Spell", meta=(ClampMin="0"))
+	float CastRecoveryDuration = 0.15f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Spell", meta=(ClampMin="0", ClampMax="1"))
+	float CastRecoveryMultiplier = 0.35f;
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="WEVORA Movement|State")
+	float SpellMovementMultiplier = 1.0f;
+	float CastRecoveryRemaining = 0.0f;
+	float SpellMovementTarget = 1.0f;
+	float SpellMovementBlendStart = 1.0f;
+	float SpellMovementBlendElapsed = 0.0f;
+	void UpdateSpellMovement(float DeltaSeconds);
+	void CancelSpellForEvasion();
 
 	/** Camera FOV at rest. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Camera", meta=(ClampMin="5.0", ClampMax="170.0"))

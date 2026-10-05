@@ -23,6 +23,13 @@ public:
 	float AimDistance = 10000.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="0"))
 	float SpawnDistance = 80.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Movement", meta=(ClampMin="0", ClampMax="1"))
+	float HorizontalVelocityInheritance = 0.4f;
+	/** Planar recoil in cm/s; Thrust uses the stronger setting. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Movement", meta=(ClampMin="0"))
+	float RecoilSpeed = 80.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Movement", meta=(ClampMin="0"))
+	float ThrustRecoilSpeed = 120.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Debug")
 	bool bLogEvents = true;
 	/** Single small resolution seam for future energy/modifier/situation rules. */
