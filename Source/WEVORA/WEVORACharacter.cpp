@@ -278,6 +278,7 @@ void AWEVORACharacter::DoAscendEnd()
 
 void AWEVORACharacter::DoDescendStart()
 {
+	CancelSpellForEvasion();
 	bDescending = true;
 	bJumpLaunchPhase = false;
 	bPoweredLastFrame = false;
@@ -298,6 +299,7 @@ void AWEVORACharacter::DoDescendEnd()
 
 void AWEVORACharacter::DoBurst()
 {
+	CancelSpellForEvasion();
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
 	if (!Movement || !GetWorld() || !Movement->IsFalling() || bDescending || bBraking)
 	{
@@ -383,9 +385,71 @@ void AWEVORACharacter::ResetFlightInput()
 	bJumpLaunchPhase = bPoweredLastFrame = false;
 	PlanarInputDirection = FVector::ZeroVector;
 	PlanarInputMagnitude = AscendHeldTime = SteeringGraceRemaining = PassiveFloatRemaining = 0.0f;
+	SpellMovementMultiplier = SpellMovementTarget = SpellMovementBlendStart = 1.0f;
+	CastRecoveryRemaining = SpellMovementBlendElapsed = 0.0f;
 	StopJumping();
 	ConsumeMovementInputVector();
 	GetCharacterMovement()->GravityScale = FallGravityScale;
+}
+
+void AWEVORACharacter::CancelSpellForEvasion()
+{
+	SpellWeavingComponent->CancelWeave();
+	CastRecoveryRemaining = 0.0f;
+}
+
+void AWEVORACharacter::ApplySpellLaunchFeedback(const FVector& Direction, float RecoilSpeed)
+{
+	CastRecoveryRemaining = FMath::Max(0.0f, CastRecoveryDuration);
+	// Recovery is a short impact; subsequent state changes blend back normally.
+	if (CastRecoveryRemaining > 0.0f)
+	{
+		SpellMovementBlendStart = SpellMovementMultiplier;
+		SpellMovementTarget = FMath::Clamp(CastRecoveryMultiplier, 0.0f, 1.0f);
+		SpellMovementBlendElapsed = 0.0f;
+	}
+	// Preserve gravity and ascent/dive velocity while adding a small planar kick.
+	GetCharacterMovement()->Velocity -= FVector(Direction.X, Direction.Y, 0.0f) * FMath::Max(0.0f, RecoilSpeed);
+}
+
+void AWEVORACharacter::UpdateSpellMovement(float DeltaSeconds)
+{
+	if (bDescending && SpellWeavingComponent->State != EWEVORAWeavingState::Idle)
+	{
+		CancelSpellForEvasion();
+	}
+	float Target = 1.0f;
+	switch (SpellWeavingComponent->State)
+	{
+	case EWEVORAWeavingState::Weaving: Target = WeavingMovementMultiplier; break;
+	case EWEVORAWeavingState::Shaping: Target = ShapingMovementMultiplier; break;
+	case EWEVORAWeavingState::ReadyToCast: Target = ReadyMovementMultiplier; break;
+	default: break;
+	}
+	// Account for a frame that crosses the end of recovery without extending the hold.
+	const float RecoveryStep = FMath::Min(DeltaSeconds, CastRecoveryRemaining);
+	CastRecoveryRemaining -= RecoveryStep;
+	if (RecoveryStep > 0.0f)
+	{
+		SpellMovementBlendElapsed += RecoveryStep;
+		// Reach the recovery penalty quickly, smoothly, then hold until recovery ends.
+		const float RecoveryAlpha = FMath::Clamp(SpellMovementBlendElapsed /
+			FMath::Max(0.001f, FMath::Min(0.04f, CastRecoveryDuration)), 0.0f, 1.0f);
+		SpellMovementMultiplier = FMath::Lerp(SpellMovementBlendStart, SpellMovementTarget,
+			FMath::SmoothStep(0.0f, 1.0f, RecoveryAlpha));
+	}
+	const float BlendStep = DeltaSeconds - RecoveryStep;
+	if (BlendStep <= 0.0f) { return; }
+	Target = FMath::Clamp(Target, 0.0f, 1.0f);
+	if (!FMath::IsNearlyEqual(Target, SpellMovementTarget))
+	{
+		SpellMovementTarget = Target;
+		SpellMovementBlendStart = SpellMovementMultiplier;
+		SpellMovementBlendElapsed = 0.0f;
+	}
+	SpellMovementBlendElapsed += BlendStep;
+	const float Alpha = FMath::Clamp(SpellMovementBlendElapsed / FMath::Max(0.01f, SpellMovementBlendDuration), 0.0f, 1.0f);
+	SpellMovementMultiplier = FMath::Lerp(SpellMovementBlendStart, Target, FMath::SmoothStep(0.0f, 1.0f, Alpha));
 }
 
 void AWEVORACharacter::UpdateFlightBeforeMovement(float DeltaSeconds)
@@ -398,7 +462,8 @@ void AWEVORACharacter::UpdateFlightBeforeMovement(float DeltaSeconds)
 
 	// Falling mode retains Unreal's swept collision, ceiling response, floor detection and landing.
 	// Only vertical support changes; planar speed is independent of climb/dive speed.
-	Movement->MaxAcceleration = FMath::Max(0.0f, GlideAcceleration);
+	UpdateSpellMovement(DeltaSeconds);
+	Movement->MaxAcceleration = FMath::Max(0.0f, GlideAcceleration) * SpellMovementMultiplier;
 	Movement->JumpZVelocity = FMath::Max(0.0f, JumpLaunchSpeed);
 	Movement->BrakingDecelerationFalling = FMath::Max(0.0f, GlideBrakingDeceleration);
 	const bool bGrounded = Movement->IsMovingOnGround();
@@ -406,7 +471,10 @@ void AWEVORACharacter::UpdateFlightBeforeMovement(float DeltaSeconds)
 	AscendHeldTime = bAscending ? AscendHeldTime + DeltaSeconds : 0.0f;
 	AirSpeedLimit = FMath::FInterpConstantTo(AirSpeedLimit, FMath::Max(0.0f, CruiseSpeed),
 		DeltaSeconds, FMath::Max(0.0f, BurstSpeedDecay));
-	Movement->MaxWalkSpeed = bGrounded ? FMath::Max(0.0f, GroundSpeed) : AirSpeedLimit;
+	// Scale cruise steering but keep the existing burst reserve for evasive movement.
+	Movement->MaxWalkSpeed = bGrounded ? FMath::Max(0.0f, GroundSpeed) * SpellMovementMultiplier :
+		FMath::Max(0.0f, CruiseSpeed) * SpellMovementMultiplier + FMath::Max(0.0f, AirSpeedLimit - CruiseSpeed);
+	Movement->MaxFlySpeed = FMath::Max(0.0f, CruiseSpeed) * SpellMovementMultiplier;
 
 	const bool bSteering = PlanarInputMagnitude > KINDA_SMALL_NUMBER;
 	if (bSteering && !bBraking)
@@ -457,9 +525,10 @@ void AWEVORACharacter::UpdateFlightBeforeMovement(float DeltaSeconds)
 	{
 		FlightState = bWantsAscent ? EWEVORAFlightState::Ascending : EWEVORAFlightState::Hovering;
 		Movement->GravityScale = 0.0f;
-		const float TargetZ = bWantsAscent ? FMath::Max(0.0f, AscendSpeed) : 0.0f;
+		const float TargetZ = bWantsAscent ? FMath::Max(0.0f, AscendSpeed) * SpellMovementMultiplier : 0.0f;
 		const float Response = 1.0f - FMath::Exp(-FMath::Max(0.0f, VerticalVelocityDamping) * DeltaSeconds);
-		const float MaxDelta = FMath::Max(0.0f, MaxHoverAcceleration) * DeltaSeconds;
+		const float MaxDelta = FMath::Max(0.0f, MaxHoverAcceleration) * DeltaSeconds *
+			(bWantsAscent ? SpellMovementMultiplier : 1.0f);
 		Movement->Velocity.Z += FMath::Clamp((TargetZ - Movement->Velocity.Z) * Response, -MaxDelta, MaxDelta);
 		bPoweredLastFrame = true;
 		PassiveFloatRemaining = 0.0f;

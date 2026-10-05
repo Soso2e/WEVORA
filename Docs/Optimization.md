@@ -2,6 +2,8 @@
 
 16GB is a target, **not a verified minimum requirement**. This pass disables hardware ray tracing and Path Tracing for the product, while leaving the combat loop's C++ and binary assets unchanged. No UE installation exists in this workspace (`UE_ROOT=/workspace/UnrealEngine-5.8` is absent); the user explicitly approved skipping the build. UE automation, asset loads, shader compilation, frame rate and memory measurements remain unverified.
 
+The renderer/editor baseline below is already on main through PR #4 (`75b3f1a`). The follow-up audit changes improve evidence collection without further changing rendering settings or deleting assets. The audit now detects native template types that omit WEVORA_API, includes core-map external packages in dependency traversal, checks for empty registries/wrong engine versions, loads Controller/Health classes, and exports timestamped reports.
+
 ## Applied changes
 
 - `r.RayTracing`, `r.Lumen.HardwareRayTracing`, `r.PathTracing`, ray tracing proxies, and hardware-RT translucent refraction: **False**. Removed inert hardware lighting-mode, RT shadow and texture-LOD overrides. Removed duplicate Windows default RHI entry.
@@ -53,31 +55,34 @@ For a real-time-free editing session, disable viewport Realtime (`Ctrl+R`, or th
    UnrealEditor-Cmd <project> -unattended -nop4 -nosplash -nosound -NullRHI -EnablePlugins=PythonScriptPlugin,EditorScriptingUtilities -run=pythonscript -script=<absolute Scripts/audit_assets.py>
    ```
 
-   Use the platform's command-line Editor executable (on Mac, under the installed app bundle). Audit output: `Saved/Optimization/asset-audit.json`. This script has syntax validation only in this environment, not UE API validation. Errors produce `complete=false` and raise an exception. Read the log as well: some engine warnings/errors do not raise Python exceptions.
+   Use the platform's command-line Editor executable (on Mac, under the installed app bundle). Audit output: `Saved/Optimization/asset-audit-<UTC timestamp>.json`. Use the path printed by the current run's `WEVORA_ASSET_AUDIT` log marker. Never substitute an older successful report if the current run fails before writing one. The script has static/synthetic validation in this environment, not UE API validation. Recorded errors produce `complete=false` and raise an exception. An empty initial /Game registry or a non-5.8 engine also prevents success. Read the log as well: some engine warnings/errors do not raise Python exceptions.
 4. Before deleting each Variant, review its hard/soft/searchable/manage external referencers, including external actors/objects and cross-Variant refs. Inspect native Blueprint parents and template class references outside Variant source, config and scripts. A group referenced by another retained group is **not safe** to delete. Engine/plugin refs and runtime string-built paths need manual review too. The script reports evidence and **never deletes assets**. Use Unreal's Referencer/Reference Viewer to corroborate, handle redirectors, then remove only proven-unreferenced packages and matching source.
+   The `native_classes` inventory includes definitions without WEVORA_API (for example ACombatCharacter, ACombatEnemy and ASideScrollingCharacter), while excluding forward declarations. Registry parent tags are refreshed after package scans. Inspect `core_dependency_roots`, `core_dependency_closure` and `core_variant_dependencies` too: the traversal explicitly scans ThirdPerson's external actor/object files and follows hard/soft/searchable/manage edges, with cycle protection. An empty dependency list is still not deletion authorization or proof that all runtime references are absent.
 5. Re-audit remaining assets before removing StateTree plugins/modules and include paths; rebuild and repeat automation and asset loads afterwards.
 6. For Substrate/unused rendering features, inspect all retained project materials, material functions, instances and World Partition actors, not just the currently loaded map. The audit lists potential consumers and Front Material connections but **does not prove absence**. Disable only demonstrated-unused features; load the core map and every affected material with a real RHI, wait for shader compilation and inspect compile/load logs. Do not treat NullRHI success as shader validation.
-7. Load BP_ThirdPersonCharacter, BP_WEVORAEnemy, BP_WEVORAEnemyProjectile, core spell/flight/enemy classes and `/Game/ThirdPerson/Lvl_ThirdPerson`. The audit attempts these loads without saving the map. Verify World Partition actors finish loading and there is still a persisted combat enemy.
+7. Load BP_ThirdPersonCharacter, BP_ThirdPersonGameMode, BP_ThirdPersonPlayerController, BP_WEVORAEnemy, BP_WEVORAEnemyProjectile, core spell/flight/mana/enemy/health classes and `/Game/ThirdPerson/Lvl_ThirdPerson`. The audit attempts these loads without saving the map. Verify World Partition actors finish loading and there is still a persisted combat enemy. It also queries RT, Lumen and retained rendering CVars after map load: check registration, current value and LastSetBy in the log. Unknown-command output need not raise Python errors, so `complete=true` alone is not CVar or shader validation.
 
 Human verification: flight feel; attribute selection/hand effects; Fire and Wind weaving/casting; projectile visibility; enemy hit and HP reduction (100→75); environment lighting after HWRT removal. No long automated play session is required.
+
+Cloud validation for the audit follow-up: all Scripts Python files parsed successfully; synthetic Registry fixtures checked unexported native class/Blueprint-parent detection, core and cross-Variant edges, cycle traversal, unique report files, and incomplete results for an empty registry, wrong engine or missing Blueprint. Config, C++ and binary Content have no diff against main. These are script-logic/static checks, not executions of Unreal's Python API, the 11 automation tests, asset loads or shader compilation.
 
 ## Measurements
 
 `python3 Scripts/optimization_metrics.py --base origin/main` compares tracked logical file sizes; LFS pointers count their declared payload sizes rather than pointer bytes. Git history, `.git/lfs`, DDC, Saved and Intermediate are excluded. Explicit project plugins are counted, **not all enabled-by-default engine plugins**. Deleting working-tree assets later will not immediately shrink Git/LFS history.
 
-| Metric | main (`fafea82`) | This branch |
+| Metric | main (`75b3f1a`, PR #4 baseline) | Audit follow-up |
 | --- | ---: | ---: |
-| Tracked files | 882 | 886 |
+| Tracked files | 886 | 886 |
 | Variant files | 591 | 591 |
 | Variant files removed | 0 | 0 |
 | C++ .cpp / .h | 56 / 53 | 56 / 53 |
-| Explicit enabled project plugins | 4 | 3 |
+| Explicit enabled project plugins | 3 | 3 |
 | Build.cs module dependencies | 11 | 11 |
-| Tracked repository logical bytes | 141,355,772 | 141,379,551 |
+| Tracked repository logical bytes | 141,379,551 | 141,385,075 |
 | Content logical bytes | 140,976,421 | 140,976,421 |
 | Variant logical bytes | 6,119,241 | 6,119,241 |
 
-Content remains 134.4456 MiB. Tracked size grows slightly from scripts/documentation; no binary assets were removed. Measurements include this report. Physical workspace at the start: Content approximately 140 MB allocated, `.git` approximately 142 MB (allocation/historical storage, not directly comparable to logical byte counts).
+Content remains 134.4456 MiB. The initial PR #4 baseline changed the explicit enabled-plugin count from 4 to 3, but the audit follow-up does not change it further. Tracked size grows slightly from script/documentation improvements; no binary assets were removed. Measurements include this report. Physical workspace at the start: Content approximately 140 MB allocated, `.git` approximately 142 MB (allocation/historical storage, not directly comparable to logical byte counts).
 
 Editor memory/startup/build/shader times: **not measured** (UE unavailable). Hardware RT/Path Tracing shader support is disabled by configuration, but shader/DDC counts and memory savings need fresh UE measurements. No 16GB operation guarantee is made.
 

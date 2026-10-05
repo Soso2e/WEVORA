@@ -60,8 +60,10 @@ void AWEVORASpellProjectile::BeginPlay()
 {
 	Super::BeginPlay();
 	if (APawn* Shooter = GetInstigator()) { Shooter->MoveIgnoreActorAdd(this); }
-	Movement->MaxSpeed = Launch.Parameters.Speed;
-	Movement->Velocity = Launch.Direction * Launch.Parameters.Speed;
+	Movement->Velocity = Launch.Direction * Launch.Parameters.Speed +
+		FVector(Launch.InheritedVelocity.X, Launch.InheritedVelocity.Y, 0.0f);
+	// Do not clamp away the shooter velocity contribution on the first movement tick.
+	Movement->MaxSpeed = FMath::Max(Launch.Parameters.Speed, float(Movement->Velocity.Size()));
 	SetLifeSpan(Launch.Parameters.Lifetime);
 }
 

@@ -49,3 +49,14 @@ Editorを開き直し、新しいC++クラスを読み込む。既存のThirdPer
 ## 開発側の自動確認
 
 Editorビルドと`WEVORA.Movement`のHeadlessテストで、保存済みBlueprintの読込・移動コンポーネント継承、実World tick、床とのsweep着地、ジャンプ/浮遊/落下、マナ消費、入力猶予、Ctrl優先、上昇、Shift速度維持/上限/消費、Alt減速、マナ不足と地上回復を確認する。公開入力APIを使用し、実キーボード・画面上の入力体験は検証しない。
+
+## 魔法使用中の移動
+
+- 通常 / Weaving / Shaping / ReadyToCastで、地上速度・巡航速度・操舵加速度を100 / 90 / 60 / 75%に変更。切替は0.2秒の補間。上昇速度・上昇加速度にも同じ倍率を適用し、高度維持の支えと重力は維持する。
+- Shift / Ctrl入力時に編み途中の魔法をCancelし、Recoveryも解除。Shiftの追加速度・消費・クールダウンは既存どおり。Ctrl保持中に新しく編み始めても移動更新でCancelする。
+- 発射成功後に0.15秒のRecovery。最初の0.04秒で35%へ滑らかに下げ、残り時間は維持し、終了後は現在の魔法状態へ0.2秒で戻す。壁に遮られた場合はRecovery・反動を発生させない。
+- 発射方向と逆向きの水平反動を80 cm/s追加（Thrustは120 cm/s）。上昇・降下速度は変更しない。
+- 弾は反動前のプレイヤー水平速度を40%継承。継承込みの速度を弾の上限に設定し、初回更新で継承分が切られないようにする。
+- Characterの`WEVORA Movement|Spell`で移動倍率・補間・Recovery、`SpellCastComponent`の`Spell|Movement`で継承率・反動を調整する。
+
+今回の確認はEditorビルドと既存Automationテストのみ。魔法状態の切替、Shift/Ctrl中断、Recovery、反動、高速飛行中の射撃の操作感はユーザーのPIE確認対象。

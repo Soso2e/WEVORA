@@ -57,6 +57,9 @@ struct WEVORA_API FWEVORASpellLaunch
 	FWEVORASpellContext Composition;
 	UPROPERTY(BlueprintReadOnly, Category="Spell")
 	FVector Direction = FVector::ForwardVector;
+	/** Shooter planar velocity contribution captured before recoil. */
+	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	FVector InheritedVelocity = FVector::ZeroVector;
 	UPROPERTY(BlueprintReadOnly, Category="Spell")
 	FWEVORASpellProjectileParameters Parameters;
 };

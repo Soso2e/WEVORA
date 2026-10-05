@@ -7,6 +7,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "WEVORA.h"
+#include "WEVORACharacter.h"
 
 UWEVORASpellCastComponent::UWEVORASpellCastComponent()
 {
@@ -93,9 +94,17 @@ void UWEVORASpellCastComponent::HandleCast(const FWEVORASpellContext& Context)
 	AWEVORASpellProjectile* Shot = GetWorld()->SpawnActorDeferred<AWEVORASpellProjectile>(
 		ProjectileClass, Transform, Pawn, Pawn, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (!Shot) { return; }
+	const FVector ShooterVelocity = Pawn->GetVelocity();
+	Launch.InheritedVelocity = FVector(ShooterVelocity.X, ShooterVelocity.Y, 0.0f) *
+		FMath::Clamp(HorizontalVelocityInheritance, 0.0f, 1.0f);
 	Shot->bLogEvents = bLogEvents;
 	Shot->InitializeSpell(Launch);
 	UGameplayStatics::FinishSpawningActor(Shot, Transform);
+	if (AWEVORACharacter* Pilot = Cast<AWEVORACharacter>(Pawn))
+	{
+		Pilot->ApplySpellLaunchFeedback(Launch.Direction,
+			Context.Gesture == EWEVORAGesture::Thrust ? ThrustRecoilSpeed : RecoilSpeed);
+	}
 	if (bLogEvents)
 	{
 		UE_LOG(LogWEVORA, Log, TEXT("Spell spawn: %s element=%s gesture=%s direction=%s damage=%.1f speed=%.1f"),
