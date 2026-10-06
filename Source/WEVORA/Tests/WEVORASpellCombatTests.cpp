@@ -4,6 +4,7 @@
 #include "Spell/WEVORASpellCastComponent.h"
 #include "Spell/WEVORASpellWeavingComponent.h"
 #include "Spell/WEVORASpellProjectile.h"
+#include "Spell/WEVORASpellReactionComponent.h"
 #include "AI/WEVORAEnemy.h"
 #include "AI/WEVORAHealthComponent.h"
 #include "Components/BoxComponent.h"
@@ -97,14 +98,14 @@ struct FSpellCombatWorld
 	{
 		Pilot->SpellWeavingComponent->BeginWeave();
 		Pilot->SpellWeavingComponent->BeginShape();
-		Pilot->DoLook(15.0f, 0.0f); // Existing gesture input path; a Sweep.
+		Pilot->DoLook(0.0f, -15.0f); // Existing inverted Look input recognizes Thrust -> Forward.
 		if (bFinish) { Pilot->SpellWeavingComponent->EndShape(); }
 		Pilot->SpellWeavingComponent->ReleaseWeave();
 	}
 	AWEVORASpellProjectile* Shot() const
 	{
-		for (TActorIterator<AWEVORASpellProjectile> It(World); It; ++It) { return *It; }
-		return nullptr;
+		TActorIterator<AWEVORASpellProjectile> It(World);
+		return It ? *It : nullptr;
 	}
 	AActor* Wall(FVector Location, FVector Extent)
 	{
@@ -138,7 +139,8 @@ bool FWEVORASpellAirCombatTest::RunTest(const FString& Parameters)
 	const float FireSpeed = Fire->Launch.Parameters.Speed;
 	UClass* FireClass = Fire->GetClass();
 	TestEqual(TEXT("Fire context retained"), Fire->Launch.Composition.Element, EWEVORASpellElement::Fire);
-	TestEqual(TEXT("Actual recognized gesture retained"), Fire->Launch.Composition.Gesture, EWEVORAGesture::Sweep);
+	TestEqual(TEXT("Actual recognized gesture retained"), Fire->Launch.Composition.Gesture, EWEVORAGesture::Thrust);
+	TestEqual(TEXT("Thrust resolves to Forward"), Fire->Launch.Spell.Shape, EWEVORASpellShape::Forward);
 	TestTrue(TEXT("World direction independent of flight-facing yaw"), Fire->Launch.Direction.X > 0.99f);
 	TestEqual(TEXT("Owner is shooter"), Fire->GetOwner(), static_cast<AActor*>(Scene.Pilot));
 	TestEqual(TEXT("Instigator is shooter"), Fire->GetInstigator(), static_cast<APawn*>(Scene.Pilot));
@@ -147,9 +149,12 @@ bool FWEVORASpellAirCombatTest::RunTest(const FString& Parameters)
 	TWeakObjectPtr<AWEVORASpellProjectile> FireRef(Fire);
 	Scene.Step(0.8f); // Real swept projectile hit; no direct ApplyDamage or hit callback.
 	TestEqual(TEXT("Fire hit subtracts damage exactly once"), Scene.Enemy->HealthComponent->Health, 75.0f);
+	TestTrue(TEXT("Fire adds Burning state"), Scene.Enemy->SpellReactionComponent->HasState(EWEVORASpellTargetState::Burning));
 	TestFalse(TEXT("Hit consumes Fire projectile"), FireRef.IsValid());
 	TestFalse(TEXT("Ignore entry cleaned up on impact"), Scene.Pilot->GetCapsuleComponent()->GetMoveIgnoreActors().Contains(Fire));
 	TestEqual(TEXT("Self HP unchanged"), Scene.Pilot->HealthComponent->Health, 100.0f);
+	Scene.Step(3.2f);
+	TestTrue(TEXT("Fire periodic damage finishes after three seconds"), FMath::IsNearlyEqual(Scene.Enemy->HealthComponent->Health, 60.0f, 0.01f));
 	Scene.Pilot->SpellWeavingComponent->CycleElement();
 	Scene.AimTarget(FRotator(20.0f, 35.0f, 0));
 	Scene.Weave();
@@ -161,8 +166,12 @@ bool FWEVORASpellAirCombatTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Camera pitch directs airborne shot upward"), Wind->Launch.Direction.Z > 0.2f);
 	Scene.Pilot->SpellWeavingComponent->CycleElement();
 	TestEqual(TEXT("In-flight composition is a snapshot"), Wind->Launch.Composition.Element, EWEVORASpellElement::Wind);
+	const FVector EnemyBeforeWind = Scene.Enemy->GetActorLocation();
+	const float HealthBeforeWind = Scene.Enemy->HealthComponent->Health;
 	Scene.Step(0.8f);
-	TestEqual(TEXT("Wind swept hit also reduces enemy HP"), Scene.Enemy->HealthComponent->Health, 50.0f);
+	TestEqual(TEXT("Wind does not deal direct damage"), Scene.Enemy->HealthComponent->Health, HealthBeforeWind);
+	TestTrue(TEXT("Wind pushes the enemy physically"), Scene.Enemy->GetActorLocation().X > EnemyBeforeWind.X + 50.0f);
+	TestTrue(TEXT("Wind also lifts the enemy"), Scene.Enemy->GetActorLocation().Z > EnemyBeforeWind.Z + 20.0f);
 	TestEqual(TEXT("Casting never resets flight support"), Scene.Pilot->FlightState, EWEVORAFlightState::Hovering);
 	return true;
 }
@@ -208,6 +217,128 @@ bool FWEVORASpellSafetyTest::RunTest(const FString& Parameters)
 	TestNull(TEXT("Unpossessed character cannot attack"), Scene.Shot());
 	Scene.Pilot->RouteEndPlay(EEndPlayReason::Destroyed);
 	TestFalse(TEXT("Cast subscription removed on end play"), Scene.Pilot->SpellWeavingComponent->OnSpellCast.IsBound());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORAReactionRuleTest, "WEVORA.Spell.Combat.ReactionRulesAndStates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORAReactionRuleTest::RunTest(const FString& Parameters)
+{
+	FSpellCombatWorld Scene;
+	if (!TestNotNull(TEXT("Enemy"), Scene.Enemy)) { return false; }
+	UWEVORASpellReactionComponent* Receiver = Scene.Enemy->SpellReactionComponent;
+	if (!TestNotNull(TEXT("Receiver inherited by saved enemy Blueprint"), Receiver)) { return false; }
+	FWEVORASpellReactionRule Bonus;
+	Bonus.Element = EWEVORASpellElement::Wind;
+	Bonus.RequiredState = EWEVORASpellTargetState::Burning;
+	Bonus.bMatchShape = true;
+	Bonus.Shape = EWEVORASpellShape::Forward;
+	FWEVORASpellReactionEffect Damage;
+	Damage.Magnitude = 7.0f;
+	Bonus.Effects.Add(Damage);
+	Receiver->ReactionRules.Add(Bonus);
+	FWEVORASpellData Spell;
+	Spell.Element = EWEVORASpellElement::Wind;
+	FHitResult Hit(Scene.Enemy, Scene.Enemy->Collision, Scene.Enemy->GetActorLocation(), -FVector::ForwardVector);
+	TestTrue(TEXT("Wind reacts to an ordinary target"), Receiver->ReceiveSpell(Spell, Hit, Scene.Controller, Scene.Pilot));
+	TestEqual(TEXT("Conditional rule requires Burning"), Scene.Enemy->HealthComponent->Health, 100.0f);
+	Spell.Element = EWEVORASpellElement::Fire;
+	TestTrue(TEXT("Fire accepted"), Receiver->ReceiveSpell(Spell, Hit, Scene.Controller, Scene.Pilot));
+	TestEqual(TEXT("Fire direct damage"), Scene.Enemy->HealthComponent->Health, 75.0f);
+	Spell.Element = EWEVORASpellElement::Wind;
+	Spell.Shape = EWEVORASpellShape::Circle;
+	Receiver->ReceiveSpell(Spell, Hit, Scene.Controller, Scene.Pilot);
+	TestEqual(TEXT("Conditional shape mismatch"), Scene.Enemy->HealthComponent->Health, 75.0f);
+	Spell.Shape = EWEVORASpellShape::Forward;
+	Spell.Power = 2.0f;
+	Receiver->ReceiveSpell(Spell, Hit, Scene.Controller, Scene.Pilot);
+	TestEqual(TEXT("Wind + Burning added only through rule data; Power scales effect"), Scene.Enemy->HealthComponent->Health, 61.0f);
+	Scene.Step(3.2f);
+	TestTrue(TEXT("Burning dealt exactly its bounded duration damage"), FMath::IsNearlyEqual(Scene.Enemy->HealthComponent->Health, 46.0f, 0.01f));
+	TestFalse(TEXT("Burn expires"), Receiver->HasState(EWEVORASpellTargetState::Burning));
+	TestFalse(TEXT("No idle tick after reactions end"), Receiver->IsComponentTickEnabled());
+	TestFalse(TEXT("No remaining displacement"), Receiver->IsDisplaced());
+	const float AfterExpiry = Scene.Enemy->HealthComponent->Health;
+	Scene.Step(1.1f);
+	TestEqual(TEXT("Expired burn cannot continue damaging"), Scene.Enemy->HealthComponent->Health, AfterExpiry);
+	Spell.Power = 0.0f;
+	TestFalse(TEXT("Zero Power ignored"), Receiver->ReceiveSpell(Spell, Hit, Scene.Controller, Scene.Pilot));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORADisplacementTest, "WEVORA.Spell.Combat.DisplacementWallsAndAI",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORADisplacementTest::RunTest(const FString& Parameters)
+{
+	FSpellCombatWorld Scene;
+	if (!TestNotNull(TEXT("Enemy"), Scene.Enemy)) { return false; }
+	Scene.Enemy->DetectionRange = 5000.0f;
+	Scene.Enemy->MoveSpeed = 450.0f;
+	Scene.Enemy->PreferredDistance = 0.0f;
+	Scene.Enemy->AttackRange = 0.0f;
+	Scene.Enemy->SetActorLocation(FVector(1000, 0, 500));
+	AActor* Wall = Scene.Wall(FVector(1160, 0, 500), FVector(5, 200, 300));
+	FWEVORASpellData Wind;
+	Wind.Element = EWEVORASpellElement::Wind;
+	FHitResult Hit(Scene.Enemy, Scene.Enemy->Collision, Scene.Enemy->GetActorLocation(), -FVector::ForwardVector);
+	Scene.Enemy->SpellReactionComponent->ReceiveSpell(Wind, Hit, Scene.Controller, Scene.Pilot);
+	Scene.Step(0.1f);
+	TestTrue(TEXT("AI does not cancel outward displacement"), Scene.Enemy->GetActorLocation().X > 1050.0f);
+	Scene.Step(0.1f);
+	TestTrue(TEXT("Swept knockback cannot cross the wall"), Scene.Enemy->GetActorLocation().X <= 1111.0f);
+	TestFalse(TEXT("Blocking collision ends displacement"), Scene.Enemy->SpellReactionComponent->IsDisplaced());
+	Wall->Destroy();
+	const float AfterKnockbackX = Scene.Enemy->GetActorLocation().X;
+	Scene.Step(0.5f);
+	TestTrue(TEXT("AI resumes approach after displacement"), Scene.Enemy->GetActorLocation().X < AfterKnockbackX - 30.0f);
+	TestEqual(TEXT("Wind leaves HP unchanged"), Scene.Enemy->HealthComponent->Health, 100.0f);
+	// World object opts in using exactly the same component, with no enemy/HP class required.
+	AActor* Object = Scene.Wall(FVector(2500, 0, 500), FVector(40));
+	Object->GetRootComponent()->SetMobility(EComponentMobility::Movable);
+	UWEVORASpellReactionComponent* Receiver = NewObject<UWEVORASpellReactionComponent>(Object);
+	Object->AddInstanceComponent(Receiver);
+	Receiver->RegisterComponent();
+	FHitResult ObjectHit(Object, Cast<UPrimitiveComponent>(Object->GetRootComponent()), Object->GetActorLocation(), -FVector::ForwardVector);
+	TestTrue(TEXT("World object accepts Wind without HP"), Receiver->ReceiveSpell(Wind, ObjectHit, Scene.Controller, Scene.Pilot));
+	Scene.Step(0.2f);
+	TestTrue(TEXT("World object moved through generic receiver"), Object->GetActorLocation().X > 2600.0f);
+	Object->Destroy();
+	TestFalse(TEXT("EndPlay clears active displacement"), Receiver->IsDisplaced());
+	AActor* PhysicsObject = Scene.Wall(FVector(3000, 0, 500), FVector(40));
+	UBoxComponent* PhysicsBody = CastChecked<UBoxComponent>(PhysicsObject->GetRootComponent());
+	PhysicsBody->SetMobility(EComponentMobility::Movable);
+	PhysicsBody->SetSimulatePhysics(true);
+	PhysicsBody->SetEnableGravity(false);
+	UWEVORASpellReactionComponent* PhysicsReceiver = NewObject<UWEVORASpellReactionComponent>(PhysicsObject);
+	PhysicsObject->AddInstanceComponent(PhysicsReceiver);
+	PhysicsReceiver->RegisterComponent();
+	FHitResult PhysicsHit(PhysicsObject, PhysicsBody, PhysicsObject->GetActorLocation(), -FVector::ForwardVector);
+	PhysicsReceiver->ReceiveSpell(Wind, PhysicsHit, Scene.Controller, Scene.Pilot);
+	Scene.Step(0.2f);
+	TestTrue(TEXT("World physics body receives Wind impulse"), PhysicsObject->GetActorLocation().X > 3100.0f);
+	TestFalse(TEXT("Physics body does not also use fallback displacement"), PhysicsReceiver->IsDisplaced());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORASpellDataTest, "WEVORA.Spell.Combat.DataResolution",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORASpellDataTest::RunTest(const FString& Parameters)
+{
+	FSpellCombatWorld Scene;
+	if (!TestNotNull(TEXT("Pilot"), Scene.Pilot)) { return false; }
+	FWEVORASpellContext Context;
+	Context.Gesture = EWEVORAGesture::Thrust;
+	FWEVORASpellLaunch Launch;
+	TestTrue(TEXT("Recognized Thrust resolves"), Scene.Pilot->SpellCastComponent->ResolveSpell(Context, Launch));
+	TestEqual(TEXT("Gesture is mapped to world Forward"), Launch.Spell.Shape, EWEVORASpellShape::Forward);
+	Scene.Pilot->SpellCastComponent->ShapeProfiles[EWEVORAGesture::Thrust].Delivery = EWEVORASpellDelivery::Area;
+	Scene.Weave();
+	TestNull(TEXT("Unimplemented delivery cannot silently fire a projectile"), Scene.Shot());
+	Scene.Pilot->SpellCastComponent->ShapeProfiles.Remove(EWEVORAGesture::Thrust);
+	TestFalse(TEXT("Missing shape rejected"), Scene.Pilot->SpellCastComponent->ResolveSpell(Context, Launch));
+	Scene.Pilot->SpellWeavingComponent->AvailableElements = { EWEVORASpellElement::Wind };
+	Scene.Pilot->SpellWeavingComponent->CycleElement();
+	TestEqual(TEXT("Selection follows configured elements"), Scene.Pilot->SpellWeavingComponent->Context.Element, EWEVORASpellElement::Wind);
 	return true;
 }
 #endif

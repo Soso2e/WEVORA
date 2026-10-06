@@ -2,15 +2,15 @@
 
 最終更新: 2026-10-05
 
-現在フェーズ: 最小の魔法戦闘ループ（実装済み・未確認、Editorビルド/自動確認済み・ユーザーのPIE確認待ち）
+現在フェーズ: Fire / Windの汎用魔法基盤（実装済み・未確認、Editorビルド/自動確認済み・ユーザーのPIE確認待ち）
 
 ## 現在の状態
 
-- 実装済み・未確認: 既存OnSpellCast/Contextを購読するSpellCastComponentとFire/Wind共通SpellProjectileを追加。認識→Cast→カメラで狙った方向へ発射→実sweep衝突→ApplyPointDamage→既存Enemy HealthのHP減少を接続。飛行処理/入力/Cancelは維持。固定魔法名のクラスやLevel Blueprintロジックは追加しない。
+- 実装済み・未確認: 既存Weaving→Spell Data→Delivery→対象Reaction Ruleを接続。FireはDamage25＋Burning5HP/秒×3秒、WindはKnockback900cm/s＋Lift220cm/s。既存飛行/入力/Cancel/Enemy HPを維持。
 - 実装済み・未確認: 初期マップ`/Game/ThirdPerson/Lvl_ThirdPerson`へ既存`BP_WEVORAEnemy`を1体配置・保存。ラベル`WEVORA_CombatEnemy`、座標`(1100, 0, 452)`、HP100・ダメージ時の仮HP表示を有効化。地形を維持し、Map/外部Actorを再読込して保存を確認。配置スクリプトは既存敵を上書きしない。
-- 完了: UE 5.8 Editorビルド成功。最終Headless自動テスト11/11成功（既存9件＋戦闘2件）、テスト警告0・失敗0。保存済みCharacter/Enemy BP、空中ホバー中Fire/Windの実認識/Cast/移動/命中/HP減少、カメラ方向、自己衝突除外、Cancel、近接壁Spawn防止、壁遮断、寿命、終了時の片付けを確認。
+- 完了: UE 5.8 Mac Editorビルド成功。最終Headless自動テスト14/14成功・テスト警告0/エラー0。Fire Forward実命中と燃焼終了、Wind押し出し/Lift、壁遮断、AI再開、State/Shape RuleとPower、世界Actor/物理Body、既存飛行/敵/入力状態の回帰を確認。保存済み初期マップの敵ReceiverとPlayer BlueprintのShape設定継承も確認。
 - 未確認: PIEの実キーボード/Viewport入力、動きながらの狙いやすさ、操作感、球体/属性ライトの視認性、難易度、Playerビルド。人間側の確認手順は`Source/WEVORA/Spell/README.md`。マップ保存の検証とHeadlessの論理検証は、描画/実プレイの証明ではない。
-- 制限: 全Gestureは共通の球を1発発射（Thrust速度1.2倍・Circle半径1.5倍）。Energyによる強さ変化/Modifier/魔法マナ消費/Wind特殊効果/正式HUD/VFX/SE/死亡画面/リスポーン/同期は今回対象外。
+- 制限: 全Gestureは共通の球を1発発射（Thrust速度1.2倍・Circle半径1.5倍）。Gesture軌跡からPowerの自動算出/Modifier/魔法マナ消費/正式HUD/VFX/SE/死亡画面/リスポーン/同期は今回対象外。
 - 実装済み・未確認: 無消費の勢いあるジャンプ、頂点付近の約1秒浮遊と自然落下、空中WASDのマナ消費ホバー、Space長押し上昇、Ctrl優先の即時降下、強化したShift、Alt減速＋静止ホバー、入力終了/キャンセル/操作解除を実装。旧地面Traceホバーを廃止し、Walking/Fallingの床・衝突・着地を使用。
 - 実装済み・未確認: 飛行用ManaComponent、地上回復、変更通知、仮マナ/飛行状態表示を追加。空中回復なし、マナ不足では高度維持と加速を停止。マナと速度・時間・重力はBlueprintで調整可能。
 - 完了: UE 5.8 Editorビルド成功。最終Headlessテスト9/9成功（飛行4件、既存魔法4件、敵AI1件）・テスト警告0・失敗0。保存済みキャラクターBlueprint、World tick、実sweep着地、浮遊時間、マナ消費/回復、入力猶予、Ctrl優先、上昇、Shift後の速度維持/上限、Alt減速を確認。
@@ -33,7 +33,26 @@
 - 完了: 属性切替の瞬間は体側の短時間演出、編み中は右手hand_rに追従する表示へ分離。編み中のQでも体側の演出と右手側の属性更新を同時に実行。BodyOffset/HandOffset/HandSocketNameと属性別SelectionSystemで個別調整可能。
 - 完了: Editorをユーザーが保存・終了後、UE 5.8 Editorビルド成功。Headless魔法テスト4/4成功・テスト警告0。実BP_ThirdPersonCharacterのhand_r存在、取り付け先、手のWorld位置との一致、旧固定オフセットの置換、体側との独立表示を確認。
 - 未確認: 右手アニメーション中の視覚的な追従、体側の高さ・明るさ、素材設定後のPIE表示。発射・着弾VFXは引き続き未実装。
-- 次にやること: ユーザーがEditorを開き直し、`Lvl_ThirdPerson`でSpace→空中Altホバー→LMB＋E＋横マウス→E解放→画面中央へ敵を狙い直す→LMB解放。球の命中と敵HP100→75を確認。QでWindも確認。感触の判断後に必要な値だけ調整。
+- 次にやること: ユーザーがEditorを開き直し、`Lvl_ThirdPerson`でSpace→空中Altホバー→LMB＋E＋上マウス→E解放→画面中央へ敵を狙い直す→LMB解放。Fire命中と敵HP100→75→燃焼終了時60を確認。QでWindのKnockback/LiftとAI再開も確認。感触の判断後に必要な値だけ調整。
+
+## 2026-10-05: 汎用魔法基盤
+
+- GitHubのorigin/main最新（7bbf072）へfast-forward後、`fix/spell-reaction-foundation`で実装。
+- 変更前: Fire/Windは同じ弾で25ダメージ。HitがHPへ直結し、敵AIが外力速度を止めていた。
+- 実装: Spell DataのElement / Shape / Delivery / Power / Direction、設定によるGesture→Shape、
+  抽象Delivery Actor、対象側Reaction ComponentとRule配列。既存入力・飛行・Projectile・HP・敵AIを再利用。
+- 初期作用: FireはDamage25＋Burning5HP/秒×3秒、WindはKnockback900cm/s＋Lift220cm/s。
+  Windの直接Damageを廃止。敵AIは外力移動中だけ休止し、その後再開。
+- 拡張: RequiredState / 任意Shapeを条件にRuleを追加。Wind×Burningは設定だけで追加可能。
+  今回の配送はProjectileのみ。Sweep/Circle/Slamも既存互換の仮Projectileで、専用配送は未実装。
+- Mac Editorビルド成功。既存テストの即returnするfor文をClang警告エラーに合わせてiterator条件へ修正。
+- 自動確認: 最終14/14成功、テスト警告0/エラー0。世界Actorと物理Bodyへの作用も確認。
+  保存済み初期マップの敵Receiver / HP表示、PlayerのShapeProfiles=4を読み取り検証。
+  結果:`Saved/Automation/SpellFoundationFinal/index.json`、ログ:`Saved/Logs/SpellFoundationFinal.log`。
+  起動時にUE内部のUnifiedError自己確認ログは出るが、WEVORAのテスト結果に失敗なし。
+- PIEの実入力・描画・プレイフィール、Player/Windowsビルド、ネットワーク同期は未確認。
+- 詳細なEditor手順・クラス・調整値・処理フロー・次の実装は`Source/WEVORA/Spell/README.md`。
+  上記の過去記録にある「Wind25ダメージ」は今回の実装で置換。
 
 ## 確認方法
 

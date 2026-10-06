@@ -18,6 +18,19 @@ UWEVORASpellCastComponent::UWEVORASpellCastComponent()
 	Wind.Speed = 2600.0f;
 	Wind.Color = FLinearColor(0.1f, 0.8f, 1.0f);
 	ElementParameters.Add(EWEVORASpellElement::Wind, Wind);
+	FWEVORASpellShapeProfile Forward;
+	Forward.SpeedMultiplier = 1.2f;
+	ShapeProfiles.Add(EWEVORAGesture::Thrust, Forward);
+	FWEVORASpellShapeProfile Sweep;
+	Sweep.Shape = EWEVORASpellShape::Sweep;
+	ShapeProfiles.Add(EWEVORAGesture::Sweep, Sweep);
+	FWEVORASpellShapeProfile Circle;
+	Circle.Shape = EWEVORASpellShape::Circle;
+	Circle.RadiusMultiplier = 1.5f;
+	ShapeProfiles.Add(EWEVORAGesture::Circle, Circle);
+	FWEVORASpellShapeProfile Slam;
+	Slam.Shape = EWEVORASpellShape::Slam;
+	ShapeProfiles.Add(EWEVORAGesture::Slam, Slam);
 }
 
 void UWEVORASpellCastComponent::BeginPlay()
@@ -34,30 +47,46 @@ void UWEVORASpellCastComponent::EndPlay(const EEndPlayReason::Type EndPlayReason
 }
 
 bool UWEVORASpellCastComponent::ResolveSpell(const FWEVORASpellContext& Context,
-	FWEVORASpellProjectileParameters& OutParameters) const
+	FWEVORASpellLaunch& OutLaunch) const
 {
 	const FWEVORASpellProjectileParameters* Profile = ElementParameters.Find(Context.Element);
-	if (!Profile || Context.Gesture == EWEVORAGesture::None) { return false; }
-	OutParameters = *Profile;
-	// All shapes currently produce one bolt. Minimal shape influence, without named spell classes.
-	if (Context.Gesture == EWEVORAGesture::Thrust) { OutParameters.Speed *= 1.2f; }
-	if (Context.Gesture == EWEVORAGesture::Circle) { OutParameters.Radius *= 1.5f; }
-	OutParameters.Speed = FMath::Max(1.0f, OutParameters.Speed);
-	OutParameters.Damage = FMath::Max(0.0f, OutParameters.Damage);
-	OutParameters.Radius = FMath::Max(1.0f, OutParameters.Radius);
-	OutParameters.Lifetime = FMath::Max(0.1f, OutParameters.Lifetime);
+	const FWEVORASpellShapeProfile* Shape = ShapeProfiles.Find(Context.Gesture);
+	if (!Profile || !Shape || SpellPower <= 0.0f || !FMath::IsFinite(SpellPower)) { return false; }
+	OutLaunch = FWEVORASpellLaunch();
+	OutLaunch.Composition = Context;
+	OutLaunch.Spell.Element = Context.Element;
+	OutLaunch.Spell.Shape = Shape->Shape;
+	OutLaunch.Spell.Delivery = Shape->Delivery;
+	OutLaunch.Spell.Power = SpellPower;
+	OutLaunch.Parameters = *Profile;
+	OutLaunch.Parameters.Speed = FMath::Max(1.0f, Profile->Speed * Shape->SpeedMultiplier);
+	OutLaunch.Parameters.Radius = FMath::Max(1.0f, Profile->Radius * Shape->RadiusMultiplier);
+	OutLaunch.Parameters.Lifetime = FMath::Max(0.1f, Profile->Lifetime);
 	return true;
 }
 
 void UWEVORASpellCastComponent::HandleCast(const FWEVORASpellContext& Context)
 {
 	APawn* Pawn = Cast<APawn>(GetOwner());
-	if (!Pawn || !Pawn->HasAuthority() || !Pawn->GetController() || !ProjectileClass) { return; }
+	if (!Pawn || !Pawn->HasAuthority() || !Pawn->GetController()) { return; }
 	const UWEVORAHealthComponent* Health = Pawn->FindComponentByClass<UWEVORAHealthComponent>();
 	if (Health && !Health->IsAlive()) { return; }
 	FWEVORASpellLaunch Launch;
-	Launch.Composition = Context;
-	if (!ResolveSpell(Context, Launch.Parameters)) { return; }
+	if (!ResolveSpell(Context, Launch)) { return; }
+	TSubclassOf<AWEVORASpellDelivery> DeliveryClass;
+	if (const TSubclassOf<AWEVORASpellDelivery>* Configured = DeliveryClasses.Find(Launch.Spell.Delivery))
+	{
+		DeliveryClass = *Configured;
+	}
+	else if (Launch.Spell.Delivery == EWEVORASpellDelivery::Projectile)
+	{
+		DeliveryClass = ProjectileClass.Get();
+	}
+	if (!DeliveryClass || DeliveryClass->HasAnyClassFlags(CLASS_Abstract))
+	{
+		if (bLogEvents) { UE_LOG(LogWEVORA, Log, TEXT("Spell delivery unavailable: %s"), *UEnum::GetValueAsString(Launch.Spell.Delivery)); }
+		return;
+	}
 	FVector ViewLocation;
 	FRotator ViewRotation;
 	Pawn->GetActorEyesViewPoint(ViewLocation, ViewRotation);
@@ -81,6 +110,7 @@ void UWEVORASpellCastComponent::HandleCast(const FWEVORASpellContext& Context)
 		if (bLogEvents) { UE_LOG(LogWEVORA, Log, TEXT("Spell spawn blocked: camera aim is behind launch origin")); }
 		return;
 	}
+	Launch.Spell.Direction = Launch.Direction;
 	const FVector Start = Origin + Launch.Direction * FMath::Max(0.0f, SpawnDistance);
 	// Sweep the entire launch segment, including the final sphere. Never spawn through a nearby wall.
 	FHitResult MuzzleHit;
@@ -91,8 +121,8 @@ void UWEVORASpellCastComponent::HandleCast(const FWEVORASpellContext& Context)
 		return;
 	}
 	const FTransform Transform(Launch.Direction.Rotation(), Start);
-	AWEVORASpellProjectile* Shot = GetWorld()->SpawnActorDeferred<AWEVORASpellProjectile>(
-		ProjectileClass, Transform, Pawn, Pawn, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	AWEVORASpellDelivery* Shot = GetWorld()->SpawnActorDeferred<AWEVORASpellDelivery>(
+		DeliveryClass, Transform, Pawn, Pawn, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (!Shot) { return; }
 	const FVector ShooterVelocity = Pawn->GetVelocity();
 	Launch.InheritedVelocity = FVector(ShooterVelocity.X, ShooterVelocity.Y, 0.0f) *
@@ -107,8 +137,8 @@ void UWEVORASpellCastComponent::HandleCast(const FWEVORASpellContext& Context)
 	}
 	if (bLogEvents)
 	{
-		UE_LOG(LogWEVORA, Log, TEXT("Spell spawn: %s element=%s gesture=%s direction=%s damage=%.1f speed=%.1f"),
-			*GetNameSafe(Shot), *UEnum::GetValueAsString(Context.Element), *UEnum::GetValueAsString(Context.Gesture),
-			*Launch.Direction.ToCompactString(), Launch.Parameters.Damage, Launch.Parameters.Speed);
+		UE_LOG(LogWEVORA, Log, TEXT("Spell spawn: %s element=%s shape=%s direction=%s power=%.1f speed=%.1f"),
+			*GetNameSafe(Shot), *UEnum::GetValueAsString(Context.Element), *UEnum::GetValueAsString(Launch.Spell.Shape),
+			*Launch.Direction.ToCompactString(), Launch.Spell.Power, Launch.Parameters.Speed);
 	}
 }

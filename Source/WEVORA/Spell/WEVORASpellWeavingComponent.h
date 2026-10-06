@@ -23,6 +23,8 @@ public:
 	/** Template mouse Look commonly negates MouseY. Set false for positive-up mappings. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Recognition")
 	bool bInvertLookY = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
+	TArray<EWEVORASpellElement> AvailableElements = { EWEVORASpellElement::Fire, EWEVORASpellElement::Wind };
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Debug")
 	bool bShowDebug = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Debug")

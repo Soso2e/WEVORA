@@ -25,65 +25,113 @@ Enhanced InputのStarted/Completed/Canceledからも公開APIを呼び出せま�
 Cast通知はCharacterの`SpellCastComponent`が購読し、共通Projectileを発射します。
 敵へのダメージ接続は実装済み。ネットワーク同期、正式な発射・着弾VFXは未実装です。
 
-## 最小戦闘ループ（Fire / Wind）
+## 汎用魔法基盤（Fire / Wind）
 
-検証マップ: `/Game/ThirdPerson/Lvl_ThirdPerson`（Editor起動時の既存マップ）。
-開始地点の前方約11m、座標`(1100, 0, 452)`に既存の`BP_WEVORAEnemy`を1体保存済み。
-World Outlinerのラベルは`WEVORA_CombatEnemy`。地形とLevel Blueprintは変更していません。
+責務: `Element × Shape × Delivery × Target State → Reaction`。
 
-1. 新しいC++ Componentを読み込むためEditorを開き直し、`Lvl_ThirdPerson`でPlay。
-2. Viewportをクリックして入力を受け付ける状態にする。初期属性はFire。QでWind/Fireを切替。
-3. Spaceでジャンプ。必要ならSpace長押しで上昇、空中で左Altを押し続けると減速・静止ホバー。
-   マナが尽きると落下するので、地上で回復して再試行する。
-4. LMBを押したまま、Eを押しながらマウスを横へ動かす。Eを離す。
-   仮デバッグ表示のGestureが`Sweep`、状態が`ReadyToCast`になることを確認。
-5. **LMBはまだ離さず、Eを離した状態で狙い直す。** 敵を画面中央へ合わせてからLMBを離してCast。
-   マウスで編むとカメラも動く既存仕様のため、この狙い直しを挟む。
-6. プレイヤーの前方から球体のProjectileが飛び、敵に命中すると
-   敵のActor名付き`HP: 75 / 100`が約2秒表示される。初期Damageは25なので4発で敵が消える。
-7. QでWindへ切り替えて同じ操作を試す。Windも同じ経路で25ダメージ。
-   敵を倒したらStop → Playで再配置される。死亡画面やリスポーンは未実装。
-8. 未確定でLMBを離すとキャンセルし、発射しない。壁に撃つと球が消え、壁の向こうにはダメージを与えない。
+- Weaving: 既存のQ / LMB / E / GestureRecognizer / Cast / Cancelを維持。
+  `AvailableElements`で切替順を設定。今回の属性はFire / Windのみ。
+- Spell Data: `FWEVORASpellData`にElement / Shape / Delivery / Power / 世界座標Direction。
+  Powerは初期値1の倍率。画面の入力方向・軌跡は従来のContextに残す。
+- Cast: `ShapeProfiles`でThrust入力をForwardへ変換。Sweep / Circle / Slamも設定で変換。
+  認識と配送を分けるため、Gestureを魔法スキル名として扱わない。
+- Delivery: 新しい抽象Actor `AWEVORASpellDelivery`が生成時のLaunchを保持し、
+  `DeliverToTarget`で対象へ渡す。既存`AWEVORASpellProjectile`はその派生で移動・衝突・寿命を担当。
+- Reaction: 新しい`UWEVORASpellReactionComponent`を既存Enemyの標準Componentとして追加。
+  属性、任意のShape、必要な対象Stateに一致した`ReactionRules`のEffectsを適用する。
+  Projectile側は敵クラスやHPを判定しない。Damageは既存HealthComponentの標準Unreal Damage経路へ接続。
 
-敵は通常どおり追尾・射撃する。狙いやすさだけを先に確認したい場合は、PIEの前に配置した敵の
-`Move Speed=0` / `Attack Interval`を長めに調整できる（本実装では既存の初期値を維持）。
-操作感、動きながらの命中、カメラの狙いやすさ、球の視認性、難易度は人間側で確認する。
+処理フロー:
 
-### 発射経路と調整
+`Input → GestureRecognizer → Weaving.OnSpellCast(Context)`
+`→ Cast.ResolveSpell(ShapeProfiles / ElementParameters / Power)`
+`→ Launch(Spell Data + 配送設定) → Delivery / Projectile → swept Hit`
+`→ 対象のReaction Component → 一致RuleのEffects → HP / Burning / 物理作用`
 
-`Input / GestureRecognizer → SpellWeavingComponent / FWEVORASpellContext → OnSpellCast`
-`→ SpellCastComponent::ResolveSpell → FWEVORASpellLaunch → SpellProjectile`
-`→ swept OnHit → ApplyPointDamage → 既存HealthComponent → HP / OnDeath`
+### 今回の初期作用
 
-- `FWEVORASpellContext`の属性・Gesture・Magnitude・DurationをCastごとにコピー。
-  画面空間のGestureDirectionと、発射用のWorld空間Directionは分離。
-- カメラ中央の最初の衝突点へプレイヤーの視点位置から狙う。空中や横向き移動中も同じ処理。
-  対象なしではカメラ前方100mを狙う。発射前のSphere sweepで近い壁を通り抜けて生成しない。
-- Fire/Windとも`AWEVORASpellProjectile`。`UProjectileMovementComponent`で直進し、壁/対象への
-  最初の衝突で消滅。所有者との衝突は双方向に除外し、寿命消滅時も除外設定を解除。
-- 既存HealthComponentを持つ生存対象へPointDamage。所有者とプレイヤーにはダメージを与えない。
-- `BP_ThirdPersonCharacter`の`SpellCastComponent / ElementParameters`で速度・Damage・Radius・Lifetime・Colorを調整。
-  初期Fire速度2200cm/s、Wind2600cm/s、Damage25、Radius16cm、Lifetime4秒。
-  全Gestureで1発の球。Thrustは速度1.2倍、Circleは半径1.5倍。
-- `ResolveSpell`が最小の挙動決定箇所。今後のEnergy/Modifier/状況はContext/Launchとこの処理へ追加できる。
-  強さは今は一定Damage。魔法のマナ消費、風の特殊効果、属性反応は実装しない。
-- 仮表示はエンジン標準Sphereと属性色のPoint Lightのみ。Niagara/専用素材は不要。
+| 属性 | Effects | 初期値 |
+|---|---|---|
+| Fire | Damage + Burning | 直接25HP、燃焼5HP/秒を3秒 |
+| Wind | Knockback + Lift | 発射方向900cm/s、上方向220cm/s、直接ダメージなし |
 
-### デバッグと自動確認
+- Fireの直接ダメージ直後はHP75、その後燃焼が終わるとHP60（他の被弾がない場合）。
+  燃焼は約1秒間隔で処理し、終了時に残り時間分を精算。再度Fireが当たると持続時間を更新し、重複させない。
+- Windは物理Bodyなら速度変化としてImpulse、CharacterならLaunchCharacterを使用。
+  既存の浮遊敵と非物理Movable Actorは、Reaction側の外力速度を衝突sweep付きで減衰移動する。
+  敵AIは外力移動中の追尾・射撃を休み、終了後に再開する。壁に当たれば外力移動を終了する。
+  浮遊敵のLift後の高さはその後の既存AIが管理する。重力落下やVortexは今回対象外。
+- 所有者への命中、既定で他プレイヤーへのReaction、生存HP0への作用を除外。
+- 壁などReceiverを持たない対象では弾を消すだけ。世界のActorへ作用させるには
+  `WEVORASpellReactionComponent`を追加する。静的な壁は移動せず、MovableまたはPhysics設定が必要。
+- 燃焼／外力のない間はReaction ComponentのTickを停止。破棄時に状態と参照を解放する。
+- Sweep / Circle / Slamは既存入力を壊さないため、**今回も1発のProjectileで配送する仮設定**。
+  横薙ぎ、範囲攻撃、Fieldの実動作は未実装。Circleは半径1.5倍、Forwardは速度1.2倍。
+  `DeliveryClasses`で専用の派生Actorへ差し替え可能。未登録のSweep / Area / Fieldを指定した場合は発射せずログ表示。
 
-- Output Logを`LogWEVORA`で絞ると、既存Castの属性/認識結果、`Spell spawn`、
-  `Spell hit`のActor/Applied Damage/HP、`Spell spawn blocked`を追跡できる。
-- `SpellCastComponent / bLogEvents=false`でSpawn/Hitログを一括停止。
-  編み側の`bLogEvents`/`bShowDebug`、HealthComponentの`bShowDamageFeedback`はそれぞれ独立に無効化可能。
-- `WEVORA.Spell.Combat.AirborneCastToDamage`: 保存済みキャラクター/敵Blueprint、実World tick、
-  空中ホバー中のFire/Wind認識→Cast→実sweep命中→HP減少、視点方向、スナップショット、自己衝突除外。
-- `WEVORA.Spell.Combat.CancelWallsAndLifetime`: 不完全/無効Gesture、近接壁でのSpawn阻止、
-  壁遮断、寿命、衝突除外の片付け、操作解除、終了時購読解除。
-- 最終Editorビルド成功、Headless既存9件＋追加2件＝11/11成功・テスト警告0。
-  自動確認は描画/キーボード/Viewportの証明ではない。Playerビルドも未確認。
-  結果:`Saved/Automation/SpellCombat/index.json`、ログ:`Saved/Logs/SpellCombatAutomation.log`。
-- `Scripts/place_combat_enemy.py`は既存敵がいない場合だけ、この既存マップへ1体追加して保存する。
-  既存敵がいる場合は設定や配置を変えず、保存済みマップの再読込を確認する。
+### Editor上の確認手順
+
+検証マップ: `/Game/ThirdPerson/Lvl_ThirdPerson`。既存の`WEVORA_CombatEnemy`を利用する。
+
+1. Editorを再起動して新しいC++クラスを読み込み、通常のGameModeでPlay。
+2. Viewportをクリック。初期属性Fire。QでFire / Wind切替。
+3. LMBを押したままEを押し、**マウスを上へ動かして**Eを離す。
+   既存表示で`Thrust / ReadyToCast`を確認。Thrustが世界の`Forward`に対応する。
+4. LMBは保持したまま敵を画面中央へ狙い直し、LMBを離してCast。
+   地上でも空中でも可能。空中ならSpaceでジャンプ、左Altでホバー。
+5. Fire: 球が敵へ命中しHP表示が減る。約3秒の燃焼でもHPが減る。
+   敵の`HealthComponent / Show Damage Feedback`を有効にするとHPを画面で確認できる。
+6. QでWindを選び同じ操作。命中時に敵が後方・上方へ動き、追尾・射撃が一時停止して再開する。
+   Wind単体はHPを減らさない。Fire後は残っている燃焼でHPが減る点に注意。
+7. E解放前のLMB解放はCancel。壁へ撃つと弾が消え、壁越しには作用しない。
+8. Stop → Playで敵HPと状態をリセット。動きながらの狙いやすさ、押し出し量、Liftの高さは人間が判断する。
+
+狙いやすさだけを見る場合は配置した敵のMove Speedを0、Attack Intervalを長めに調整できる。
+Output Logの`LogWEVORA`でCast → Spell spawn → Spell hitを確認できる。
+敵のReaction Componentの`BurningRemaining / ExternalVelocity`はPIE中にDetailsで参照可能。
+
+### Blueprintで調整する主要値
+
+| 場所 | 値 |
+|---|---|
+| Player / SpellWeavingComponent | AvailableElements、Gesture Thresholds |
+| Player / SpellCastComponent | SpellPower、ElementParametersのSpeed / Radius / Lifetime / Color |
+| Player / SpellCastComponent | ShapeProfilesのShape / Delivery / SpeedMultiplier / RadiusMultiplier |
+| Player / SpellCastComponent | DeliveryClasses、既存ProjectileClass、AimDistance / SpawnDistance |
+| Enemy / SpellReactionComponent | ReactionRulesのElement / bMatchShape / Shape / RequiredState / Effects |
+| Enemy / SpellReactionComponent | EffectsのReaction / Magnitude / Duration、DisplacementDeceleration |
+| Enemy / HealthComponent | MaxHealth / Show Damage Feedback |
+
+以前の`ElementParameters.Damage`は責務分離により廃止し、対象の`ReactionRules → Damage.Magnitude`へ移した。
+既存BlueprintでDamageを独自変更していた場合は、対象側で再設定する。
+PowerはDamage / Burning DPS / Knockback / Liftの強さへ掛かり、Burningの時間には掛からない。
+Reaction Ruleの照合は**着弾前の状態**で一括実行するため、Ruleの並び順によって条件が変わらない。
+同じ条件の複数Ruleはすべて適用する。
+
+`Wind → Burning`を試す場合は、Wind / RequiredState=BurningのRuleを追加し、
+追加DamageやLiftを設定するだけ。大規模な合成や相性表は導入していない。
+新属性はEnum、AvailableElements、属性配送プロフィール、表示プロフィール、対象Ruleへ追加する。
+既存Projectile / Reactionの属性分岐を書き換える必要はない。
+新しい作用の種類そのものを追加する場合は、Reaction Enumと作用実行処理を追加する。
+
+### 確認範囲と次の実装
+
+自動テストは保存済みCharacter / Enemy Blueprintを使い、公開入力APIからCast、World tick、
+実際のProjectile sweep命中までを確認する。キーボード実入力・描画・プレイフィールの証明ではない。
+
+- AirborneCastToDamage: Forward、Fire HP / Burning、Wind押し出し / Lift、属性スナップショット。
+- CancelWallsAndLifetime: Cancel、壁、近接Spawn阻止、寿命、購読と自己衝突除外の解放。
+- ReactionRulesAndStates: Wind × Burningを設定追加だけで検証、Shape条件、Power、燃焼終了。
+- DisplacementWallsAndAI: 壁で止まる外力、敵AI再開、HPのない世界Actor / Physics Bodyへの作用。
+- DataResolution: Gesture / Shape分離、未実装Deliveryの拒否、設定による属性選択。
+
+最終UE 5.8 Mac Editorビルド成功、自動テスト14/14成功・テスト警告0/エラー0。
+保存済み初期マップのEnemy Receiver / HP表示と、Player BlueprintのShapeProfiles継承を確認。
+結果:`Saved/Automation/SpellFoundationFinal/index.json`、ログ:`Saved/Logs/SpellFoundationFinal.log`。
+
+次は人間のPIE確認後、Sweep / AreaのDeliveryを1種類ずつ追加してShapeの違いを遊びへ反映する。
+その後、燃焼中の対象を分かりやすくする仮表示と、Wind × Burningの具体的な作用を1Ruleだけ追加する。
+正式VFX / UI、追加属性、ネットワーク同期は今回対象外。
 
 ## 魔法選択エフェクト
 
@@ -131,3 +179,12 @@ PIEで4GestureとQ切替、途中キャンセル、繰り返しCastを確認し�
 選択表示はQで体側が点灯・消灯し、編み中は右手に追従することを確認してください。
 編み中のQで体側の短時間表示と右手側の属性更新が同時に行われること、Shapeやり直し、Cast・キャンセル時の停止も確認してください。
 Niagara素材設定後はUser Parameterの反映と、繰り返し操作で表示が残らないこともPIEで確認してください。
+
+## 今回変更したファイル
+
+- 新規: `Spell/WEVORASpellDelivery.h/.cpp`、`Spell/WEVORASpellReactionComponent.h/.cpp`。
+- 更新: `Spell/WEVORASpellTypes.h`、`Spell/WEVORASpellCastComponent.h/.cpp`、
+  `Spell/WEVORASpellProjectile.h/.cpp`、`Spell/WEVORASpellWeavingComponent.h/.cpp`、
+  `AI/WEVORAEnemy.h/.cpp`、`Tests/WEVORASpellCombatTests.cpp`（すべて`Source/WEVORA`内）。
+- 文書: `Source/WEVORA/Spell/README.md`、`Source/WEVORA/AI/README.md`、`PROGRESS.md`。
+- Map / Blueprintのアセットは変更せず、既存保存済みアセットへのネイティブComponent継承を検証。

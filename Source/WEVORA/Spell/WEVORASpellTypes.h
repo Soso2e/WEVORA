@@ -12,6 +12,44 @@ enum class EWEVORAGesture : uint8 { None, Thrust, Sweep, Circle, Slam };
 UENUM(BlueprintType)
 enum class EWEVORAWeavingState : uint8 { Idle, Weaving, Shaping, ReadyToCast };
 
+/** Gesture describes input; Shape describes the spell in world space. */
+UENUM(BlueprintType)
+enum class EWEVORASpellShape : uint8 { Forward, Sweep, Circle, Slam };
+
+UENUM(BlueprintType, meta=(ScriptName="WEVORASpellDeliveryKind"))
+enum class EWEVORASpellDelivery : uint8 { Projectile, Sweep, Area, Field };
+
+USTRUCT(BlueprintType)
+struct WEVORA_API FWEVORASpellData
+{
+	GENERATED_BODY()
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
+	EWEVORASpellElement Element = EWEVORASpellElement::Fire;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
+	EWEVORASpellShape Shape = EWEVORASpellShape::Forward;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
+	EWEVORASpellDelivery Delivery = EWEVORASpellDelivery::Projectile;
+	/** Dimensionless multiplier for target reaction magnitudes. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="0"))
+	float Power = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
+	FVector Direction = FVector::ForwardVector;
+};
+
+USTRUCT(BlueprintType)
+struct WEVORA_API FWEVORASpellShapeProfile
+{
+	GENERATED_BODY()
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
+	EWEVORASpellShape Shape = EWEVORASpellShape::Forward;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
+	EWEVORASpellDelivery Delivery = EWEVORASpellDelivery::Projectile;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="0.01"))
+	float SpeedMultiplier = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="0.01"))
+	float RadiusMultiplier = 1.0f;
+};
+
 /** Input-space measurements, independent of movement and eventual spell effects. */
 USTRUCT(BlueprintType)
 struct WEVORA_API FWEVORASpellContext
@@ -38,8 +76,6 @@ struct WEVORA_API FWEVORASpellProjectileParameters
 	GENERATED_BODY()
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="1"))
 	float Speed = 2200.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="0"))
-	float Damage = 25.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="1"))
 	float Radius = 16.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="0.1"))
@@ -55,6 +91,8 @@ struct WEVORA_API FWEVORASpellLaunch
 	GENERATED_BODY()
 	UPROPERTY(BlueprintReadOnly, Category="Spell")
 	FWEVORASpellContext Composition;
+	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	FWEVORASpellData Spell;
 	UPROPERTY(BlueprintReadOnly, Category="Spell")
 	FVector Direction = FVector::ForwardVector;
 	/** Shooter planar velocity contribution captured before recoil. */
