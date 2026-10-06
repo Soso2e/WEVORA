@@ -94,9 +94,8 @@ bool FWEVORAJumpTest::RunTest(const FString& Parameters)
 	Scene.Step(1.0f / 60.0f);
 	TestTrue(TEXT("Tap immediately launches upward"), Movement->Velocity.Z > 800.0f);
 	Pilot->DoJumpEnd();
-	const double BeforeAirTap = Movement->Velocity.Z;
 	Pilot->DoJumpStart(); Pilot->DoJumpEnd();
-	TestEqual(TEXT("A second air tap gives no free jump impulse"), Movement->Velocity.Z, BeforeAirTap);
+	TestEqual(TEXT("A second air tap launches upward"), Movement->Velocity.Z, 900.0);
 	float CoastTime = 0.0f;
 	bool bSawFall = false;
 	for (int32 Frame = 0; Frame < 210; ++Frame)
@@ -124,9 +123,9 @@ bool FWEVORAPoweredFlightTest::RunTest(const FString& Parameters)
 	Scene.PutInAir();
 	Pilot->DoMove(0.0f, 1.0f);
 	Scene.Step(0.5f);
-	TestEqual(TEXT("Steering supports altitude"), Pilot->FlightState, EWEVORAFlightState::Hovering);
-	TestTrue(TEXT("Powered hover spends mana per elapsed second"), FMath::IsNearlyEqual(Pilot->ManaComponent->Mana, 96.0f, 0.05f));
-	TestTrue(TEXT("Hover keeps altitude"), FMath::IsNearlyEqual(Pilot->GetActorLocation().Z, 5000.0f, 1.0f));
+	TestEqual(TEXT("Steering keeps falling"), Pilot->FlightState, EWEVORAFlightState::Falling);
+	TestEqual(TEXT("Steering spends no mana"), Pilot->ManaComponent->Mana, 100.0f);
+	TestTrue(TEXT("Steering descends instead of hovering"), Pilot->GetActorLocation().Z < 4900.0f);
 	const float ReleaseMana = Pilot->ManaComponent->Mana;
 	const double ReleaseSpeed = Movement->Velocity.Size2D();
 	Pilot->DoMove(0.0f, 0.0f);
@@ -218,9 +217,20 @@ bool FWEVORAHeldHoverTest::RunTest(const FString& Parameters)
 		const double NaturalFallSpeed = Movement->Velocity.Z;
 		TestTrue(TEXT("Falling without a jump launch has natural gravity"), NaturalFallSpeed < -500.0f);
 		TestEqual(TEXT("Unpowered fall uses no mana"), Pilot->ManaComponent->Mana, 100.0f);
+		Scene.PutInAir();
 		Pilot->DoMove(0.0f, 1.0f);
 		Scene.Step(0.5f, Delta);
-		TestTrue(TEXT("Steering smoothly damps an existing fall"), Movement->Velocity.Z > NaturalFallSpeed * 0.25f);
+		TestTrue(TEXT("Steering falls at approximately 80 percent from rest"),
+			FMath::IsNearlyEqual(Movement->Velocity.Z / NaturalFallSpeed, 0.8, 0.02));
+		TestEqual(TEXT("Steering alone never hovers"), Pilot->FlightState, EWEVORAFlightState::Falling);
+		TestEqual(TEXT("Steering fall spends no mana"), Pilot->ManaComponent->Mana, 100.0f);
+		Pilot->DoJumpStart();
+		TestTrue(TEXT("Jump catches a moving airborne fall"), Movement->Velocity.Z > 800.0f);
+		Scene.Step(0.05f, Delta);
+		const double HeldJumpSpeed = Movement->Velocity.Z;
+		Pilot->DoJumpStart();
+		TestEqual(TEXT("Repeated start while held does not jump again"), Movement->Velocity.Z, HeldJumpSpeed);
+		Pilot->DoJumpEnd();
 		TestTrue(TEXT("Air acceleration builds speed gradually"), Movement->Velocity.Size2D() > 200.0f && Movement->Velocity.Size2D() < 350.0f);
 		Pilot->DoMove(0.0f, 0.0f);
 		Pilot->DoBurstStart();

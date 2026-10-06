@@ -146,6 +146,9 @@ protected:
 	float AscendManaPerSecond = 18.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Vertical", meta=(ClampMin="0.0"))
 	float FallGravityScale = 1.2f;
+	/** Moving in air reduces downward acceleration without hovering or spending mana. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Vertical", meta=(ClampMin="0.01", ClampMax="1.0"))
+	float SteeringFallMultiplier = 0.8f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Vertical", meta=(ClampMin="0.0"))
 	float DiveGravityScale = 2.4f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Vertical", meta=(ClampMin="0.0"))

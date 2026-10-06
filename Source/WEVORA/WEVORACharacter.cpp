@@ -264,11 +264,19 @@ void AWEVORACharacter::DoRecenterView()
 
 void AWEVORACharacter::DoAscendStart()
 {
+	if (bAscending) { return; }
 	bAscending = true;
 	AscendHeldTime = 0.0f;
-	if (!bDescending && GetCharacterMovement()->IsMovingOnGround())
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!bDescending && Movement->IsMovingOnGround())
 	{
 		Jump();
+	}
+	else if (!bDescending && Movement->IsFalling())
+	{
+		// Each new press can jump in air; holding still transitions to paid ascent.
+		Movement->Velocity.Z = FMath::Max(0.0f, JumpLaunchSpeed);
+		OnJumped();
 	}
 }
 
@@ -522,7 +530,7 @@ void AWEVORACharacter::UpdateFlightBeforeMovement(float DeltaSeconds)
 	}
 	bJumpLaunchPhase = false;
 
-	const bool bWantsSupport = bHoverEnabled && (bWantsAscent || bBraking || bBurstHeld || bSteering);
+	const bool bWantsSupport = bHoverEnabled && (bWantsAscent || bBraking || bBurstHeld);
 	const float ManaRate = FMath::Max(0.0f, bWantsAscent ? AscendManaPerSecond : HoverManaPerSecond);
 	if (bWantsSupport && ManaComponent->Mana > 0.0f && ManaComponent->ConsumeMana(ManaRate * DeltaSeconds))
 	{
@@ -538,7 +546,8 @@ void AWEVORACharacter::UpdateFlightBeforeMovement(float DeltaSeconds)
 
 	// Releasing all support input (or exhausting mana) restores normal gravity immediately.
 	// Residual horizontal velocity alone never grants passive altitude support.
-	Movement->GravityScale = FMath::Max(0.0f, FallGravityScale);
+	Movement->GravityScale = FMath::Max(0.0f, FallGravityScale) *
+		(bSteering && Movement->Velocity.Z <= 0.0f ? FMath::Clamp(SteeringFallMultiplier, 0.01f, 1.0f) : 1.0f);
 	FlightState = EWEVORAFlightState::Falling;
 }
 
