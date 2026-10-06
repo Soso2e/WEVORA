@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "Logging/LogMacros.h"
+#include "Spell/WEVORASpellTypes.h"
 #include "WEVORACharacter.generated.h"
 
 class USpringArmComponent;
@@ -68,6 +69,24 @@ public:
 
 	/** Called only after the cast component successfully launches a projectile. */
 	void ApplySpellLaunchFeedback(const FVector& Direction, float RecoilSpeed);
+
+	/** Design rules run at the native update point; override these in the player Blueprint. */
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="WEVORA Design|Camera")
+	float CalculateCameraFOV(float DeltaSeconds) const;
+	virtual float CalculateCameraFOV_Implementation(float DeltaSeconds) const;
+
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="WEVORA Design|Movement")
+	float GetSpellMovementTarget() const;
+	virtual float GetSpellMovementTarget_Implementation() const;
+
+	/** Return false to reject a cast. Aim, collision checks and spawning remain native. */
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="WEVORA Design|Spell")
+	bool ResolveSpellLaunch(const FWEVORASpellContext& Context, FWEVORASpellLaunch& OutLaunch) const;
+	virtual bool ResolveSpellLaunch_Implementation(const FWEVORASpellContext& Context, FWEVORASpellLaunch& OutLaunch) const;
+
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="WEVORA Design|Spell")
+	float GetSpellRecoilSpeed(const FWEVORASpellContext& Context) const;
+	virtual float GetSpellRecoilSpeed_Implementation(const FWEVORASpellContext& Context) const;
 
 protected:
 

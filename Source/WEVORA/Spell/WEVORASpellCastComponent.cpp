@@ -72,7 +72,16 @@ void UWEVORASpellCastComponent::HandleCast(const FWEVORASpellContext& Context)
 	const UWEVORAHealthComponent* Health = Pawn->FindComponentByClass<UWEVORAHealthComponent>();
 	if (Health && !Health->IsAlive()) { return; }
 	FWEVORASpellLaunch Launch;
-	if (!ResolveSpell(Context, Launch)) { return; }
+	AWEVORACharacter* Pilot = Cast<AWEVORACharacter>(Pawn);
+	if (!(Pilot ? Pilot->ResolveSpellLaunch(Context, Launch) : ResolveSpell(Context, Launch))) { return; }
+	// Blueprint rules may supply custom data; reject invalid physics inputs before a sweep or spawn.
+	if (!FMath::IsFinite(Launch.Spell.Power) || Launch.Spell.Power <= 0.0f ||
+		!FMath::IsFinite(Launch.Parameters.Speed) || Launch.Parameters.Speed < 1.0f ||
+		!FMath::IsFinite(Launch.Parameters.Radius) || Launch.Parameters.Radius < 1.0f ||
+		!FMath::IsFinite(Launch.Parameters.Lifetime) || Launch.Parameters.Lifetime < 0.1f)
+	{
+		return;
+	}
 	TSubclassOf<AWEVORASpellDelivery> DeliveryClass;
 	if (const TSubclassOf<AWEVORASpellDelivery>* Configured = DeliveryClasses.Find(Launch.Spell.Delivery))
 	{
@@ -130,10 +139,9 @@ void UWEVORASpellCastComponent::HandleCast(const FWEVORASpellContext& Context)
 	Shot->bLogEvents = bLogEvents;
 	Shot->InitializeSpell(Launch);
 	UGameplayStatics::FinishSpawningActor(Shot, Transform);
-	if (AWEVORACharacter* Pilot = Cast<AWEVORACharacter>(Pawn))
+	if (Pilot)
 	{
-		Pilot->ApplySpellLaunchFeedback(Launch.Direction,
-			Context.Gesture == EWEVORAGesture::Thrust ? ThrustRecoilSpeed : RecoilSpeed);
+		Pilot->ApplySpellLaunchFeedback(Launch.Direction, Pilot->GetSpellRecoilSpeed(Context));
 	}
 	if (bLogEvents)
 	{

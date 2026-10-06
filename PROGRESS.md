@@ -6,6 +6,15 @@
 
 ## 2026-10-06 移動調整
 
+### Blueprint移行・第一段階（移動/カメラと魔法を優先）
+
+- `BP_ThirdPersonCharacter`へ`CalculateCameraFOV` / `GetSpellMovementTarget` / `ResolveSpellLaunch` / `GetSpellRecoilSpeed`の4関数を追加・保存。速度連動FOV、編み状態別移動倍率、属性/形からの発射データ組み立て、Gesture別反動のルールはBlueprintで編集でき、以降この範囲の変更にC++ビルド不要。
+- C++にBlueprintNativeEventの呼び出し境界と互換フォールバックを追加。物理直前更新、マナ管理、Aim/壁遮断/Spawnはネイティブに維持。無効なBlueprint発射パラメータはSpawn前に拒否。既存の空中ジャンプ消費/部分マナダッシュ、保存済みBlueprint設定とEventGraphを保全。
+- UE 5.8 Windows Editorビルド成功。移行Blueprintの警告をエラー扱いにしたコンパイル成功。新規`WEVORA.Design.BlueprintRules`と魔法テストは成功。全18件中16件成功・2件失敗。
+- 失敗は`WEVORA.Movement.BurstAndBrake` / `HeldHoverAndNaturalFall`。変更前の保存済みBlueprintでも移動7件中5件成功・同じ2件が失敗。比較後は移行アセットを復元しハッシュ一致を確認。既存期待値/調整値の切り分けは未解決、今回の移行回帰と断定しない。
+- 起動時の既存GameFeatureData設定不足エラーで移行コマンドレット終了コード1。Python実行・グラフCompile/Save成功は別途確認済み。ログ全体エラー0とは記録しない。実入力・見た目・操作感はPIE未確認。
+- 調整手順とC++に残す範囲: `Docs/BlueprintDesign.md`。一度限りの移行: `Scripts/migrate_blueprint_design.py`（既存の移行関数を上書きしない）。バックアップ: `Saved/BlueprintDesignBackup/20261006_173612/`。結果: `Saved/Automation/BlueprintDesign/index.json`、比較: `Saved/Automation/BlueprintDesignBaseline/index.json`。
+
 - 変更前に`git pull --ff-only origin main`を実行し、最新main `1b5844c`と一致を確認。既存の隔離checkout `work`で作業。
 - 空中操舵加速度を新しい`AirSteeringAcceleration`（初期値550 cm/s²、従来2100の約26%）へ分離。地上加速度、ダッシュ追加速度、最高速度、魔法状態の移動倍率は維持。
 - Shift押下時は単発ダッシュ、保持中は水平慣性を残すマナホバー。Enhanced InputのCompleted/CanceledとキーReleasedで保持解除。既存`DoBurst()`は単発APIとして維持し、保持入力向け`DoBurstStart/End`を追加。

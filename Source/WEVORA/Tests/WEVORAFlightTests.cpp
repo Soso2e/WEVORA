@@ -274,6 +274,66 @@ bool FWEVORAHeldHoverTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORAPartialBurstTest, "WEVORA.Movement.PartialBurstMana",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORAPartialBurstTest::RunTest(const FString& Parameters)
+{
+	double FullBurstSpeed = 0.0;
+	for (const float AvailableMana : {18.0f, 12.0f, 6.0f, 3.0f, 0.0f})
+	{
+		FFlightWorld Scene;
+		if (!TestNotNull(TEXT("Pilot"), Scene.Pilot)) { return false; }
+		Scene.PutInAir();
+		auto* Pilot = Scene.Pilot;
+		auto* Movement = Pilot->GetCharacterMovement();
+		Pilot->ManaComponent->ConsumeMana(Pilot->ManaComponent->Mana - AvailableMana);
+		Pilot->DoMove(0.0f, 1.0f);
+		Pilot->DoBurst();
+		if (AvailableMana == 18.0f)
+		{
+			FullBurstSpeed = Movement->Velocity.Size2D();
+			TestTrue(TEXT("Full dash launches from rest"), FullBurstSpeed > 0.0);
+		}
+		const float ExpectedStrength = FMath::Min(AvailableMana / 12.0f, 1.0f);
+		TestTrue(TEXT("Dash impulse scales with available mana"),
+			FMath::IsNearlyEqual(Movement->Velocity.Size2D(),
+				FullBurstSpeed * ExpectedStrength, 0.01));
+		TestEqual(TEXT("Dash consumes at most twelve mana"), Pilot->ManaComponent->Mana,
+			FMath::Max(0.0f, AvailableMana - 12.0f));
+		const FVector FirstVelocity = Movement->Velocity;
+		Pilot->DoBurst();
+		TestEqual(TEXT("Repeat dash cannot bypass cooldown or empty mana"), Movement->Velocity, FirstVelocity);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORAAirJumpManaTest, "WEVORA.Movement.AirJumpMana",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORAAirJumpManaTest::RunTest(const FString& Parameters)
+{
+	FFlightWorld Scene;
+	if (!TestNotNull(TEXT("Pilot"), Scene.Pilot)) { return false; }
+	Scene.PutInAir();
+	auto* Pilot = Scene.Pilot;
+	auto* Movement = Pilot->GetCharacterMovement();
+	Pilot->ManaComponent->ConsumeMana(Pilot->ManaComponent->Mana - 16.0f);
+	Pilot->DoJumpStart();
+	TestEqual(TEXT("Air jump costs eight mana"), Pilot->ManaComponent->Mana, 8.0f);
+	Pilot->DoJumpStart();
+	TestEqual(TEXT("Held input does not charge again"), Pilot->ManaComponent->Mana, 8.0f);
+	Pilot->DoJumpEnd();
+	Pilot->DoJumpStart();
+	TestEqual(TEXT("Exactly eight mana permits a jump"), Pilot->ManaComponent->Mana, 0.0f);
+	TestTrue(TEXT("Paid jump launches upward"), Movement->Velocity.Z > 800.0f);
+	Pilot->DoJumpEnd();
+	Pilot->ManaComponent->RestoreMana(7.0f);
+	Movement->Velocity.Z = -300.0f;
+	Pilot->DoJumpStart();
+	TestEqual(TEXT("Insufficient mana prevents launch"), Movement->Velocity.Z, -300.0);
+	TestEqual(TEXT("Rejected jump preserves remaining mana"), Pilot->ManaComponent->Mana, 7.0f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORAManaTest, "WEVORA.Movement.ManaRecovery",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWEVORAManaTest::RunTest(const FString& Parameters)

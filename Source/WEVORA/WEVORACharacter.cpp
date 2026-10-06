@@ -274,6 +274,13 @@ void AWEVORACharacter::DoAscendStart()
 	}
 	else if (!bDescending && Movement->IsFalling())
 	{
+		// Air jumps cost mana once per press; insufficient mana leaves velocity unchanged.
+		constexpr float AirJumpManaCost = 8.0f;
+		if (!ManaComponent || ManaComponent->Mana < AirJumpManaCost ||
+			!ManaComponent->ConsumeMana(AirJumpManaCost))
+		{
+			return;
+		}
 		// Each new press can jump in air; holding still transitions to paid ascent.
 		Movement->Velocity.Z = FMath::Max(0.0f, JumpLaunchSpeed);
 		OnJumped();
@@ -331,10 +338,14 @@ void AWEVORACharacter::DoBurst()
 	{
 		return;
 	}
-	if (ManaComponent->Mana <= 0.0f || !ManaComponent->ConsumeMana(FMath::Max(0.0f, BurstManaCost)))
+	if (ManaComponent->Mana <= 0.0f)
 	{
 		return;
 	}
+	const float ManaCost = FMath::Max(0.0f, BurstManaCost);
+	const float ManaSpent = FMath::Min(ManaComponent->Mana, ManaCost);
+	const float BurstStrength = ManaCost > 0.0f ? ManaSpent / ManaCost : 1.0f;
+	if (!ManaComponent->ConsumeMana(ManaSpent)) { return; }
 
 	FVector BurstDirection = PlanarInputDirection.GetSafeNormal2D();
 
@@ -356,7 +367,7 @@ void AWEVORACharacter::DoBurst()
 		}
 	}
 
-	Movement->Velocity += BurstDirection * BurstImpulse;
+	Movement->Velocity += BurstDirection * BurstImpulse * BurstStrength;
 
 	const float PlanarSpeed = Movement->Velocity.Size2D();
 	if (PlanarSpeed > BurstMaxSpeed && PlanarSpeed > KINDA_SMALL_NUMBER)
@@ -437,14 +448,7 @@ void AWEVORACharacter::UpdateSpellMovement(float DeltaSeconds)
 	{
 		CancelSpellForEvasion();
 	}
-	float Target = 1.0f;
-	switch (SpellWeavingComponent->State)
-	{
-	case EWEVORAWeavingState::Weaving: Target = WeavingMovementMultiplier; break;
-	case EWEVORAWeavingState::Shaping: Target = ShapingMovementMultiplier; break;
-	case EWEVORAWeavingState::ReadyToCast: Target = ReadyMovementMultiplier; break;
-	default: break;
-	}
+	float Target = GetSpellMovementTarget();
 	// Account for a frame that crosses the end of recovery without extending the hold.
 	const float RecoveryStep = FMath::Min(DeltaSeconds, CastRecoveryRemaining);
 	CastRecoveryRemaining -= RecoveryStep;
@@ -573,14 +577,46 @@ void AWEVORACharacter::UpdateCameraFeel(float DeltaSeconds)
 		return;
 	}
 
+	const float NewFOV = CalculateCameraFOV(DeltaSeconds);
+	if (FMath::IsFinite(NewFOV))
+	{
+		FollowCamera->SetFieldOfView(FMath::Clamp(NewFOV, 5.0f, 170.0f));
+	}
+}
+
+float AWEVORACharacter::CalculateCameraFOV_Implementation(float DeltaSeconds) const
+{
+	if (!FollowCamera) { return BaseCameraFOV; }
 	const float ReferenceSpeed = FMath::Max(BurstMaxSpeed, 1.0f);
 	const float SpeedRatio = FMath::Clamp(GetVelocity().Size() / ReferenceSpeed, 0.0f, 1.0f);
 	const float TargetFOV = BaseCameraFOV + SpeedFOVBoost * SpeedRatio;
-	const float NewFOV = FMath::FInterpTo(
+	return FMath::FInterpTo(
 		FollowCamera->FieldOfView,
 		TargetFOV,
 		DeltaSeconds,
 		CameraFOVInterpSpeed);
+}
 
-	FollowCamera->SetFieldOfView(NewFOV);
+float AWEVORACharacter::GetSpellMovementTarget_Implementation() const
+{
+	switch (SpellWeavingComponent->State)
+	{
+	case EWEVORAWeavingState::Weaving: return WeavingMovementMultiplier;
+	case EWEVORAWeavingState::Shaping: return ShapingMovementMultiplier;
+	case EWEVORAWeavingState::ReadyToCast: return ReadyMovementMultiplier;
+	default: return 1.0f;
+	}
+}
+
+bool AWEVORACharacter::ResolveSpellLaunch_Implementation(const FWEVORASpellContext& Context,
+	FWEVORASpellLaunch& OutLaunch) const
+{
+	return SpellCastComponent && SpellCastComponent->ResolveSpell(Context, OutLaunch);
+}
+
+float AWEVORACharacter::GetSpellRecoilSpeed_Implementation(const FWEVORASpellContext& Context) const
+{
+	if (!SpellCastComponent) { return 0.0f; }
+	return Context.Gesture == EWEVORAGesture::Thrust ?
+		SpellCastComponent->ThrustRecoilSpeed : SpellCastComponent->RecoilSpeed;
 }

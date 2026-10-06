@@ -341,4 +341,64 @@ bool FWEVORASpellDataTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Selection follows configured elements"), Scene.Pilot->SpellWeavingComponent->Context.Element, EWEVORASpellElement::Wind);
 	return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORABlueprintDesignTest, "WEVORA.Design.BlueprintRules",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORABlueprintDesignTest::RunTest(const FString& Parameters)
+{
+	FSpellCombatWorld Scene;
+	if (!TestNotNull(TEXT("Saved Blueprint pilot"), Scene.Pilot)) { return false; }
+	AWEVORACharacter* Pilot = Scene.Pilot;
+	for (const FName Name : { FName(TEXT("CalculateCameraFOV")), FName(TEXT("GetSpellMovementTarget")),
+		FName(TEXT("ResolveSpellLaunch")), FName(TEXT("GetSpellRecoilSpeed")) })
+	{
+		UFunction* Function = Pilot->FindFunction(Name);
+		if (!TestNotNull(*Name.ToString(), Function)) { return false; }
+		TestTrue(TEXT("Saved Blueprint owns the design override"), Function->GetOuterUClass() == Pilot->GetClass());
+	}
+	for (const EWEVORAWeavingState State : { EWEVORAWeavingState::Idle, EWEVORAWeavingState::Weaving,
+		EWEVORAWeavingState::Shaping, EWEVORAWeavingState::ReadyToCast })
+	{
+		Pilot->SpellWeavingComponent->State = State;
+		TestEqual(TEXT("Blueprint movement rule preserves existing defaults"),
+			Pilot->GetSpellMovementTarget(), Pilot->GetSpellMovementTarget_Implementation());
+	}
+	Pilot->SpellWeavingComponent->State = EWEVORAWeavingState::Idle;
+	Pilot->GetCharacterMovement()->Velocity = FVector(1600, 400, 200);
+	for (const float Delta : { 1.0f / 30.0f, 1.0f / 60.0f, 1.0f / 120.0f })
+	{
+		TestTrue(TEXT("Blueprint camera preserves interpolation at multiple frame rates"), FMath::IsNearlyEqual(
+			Pilot->CalculateCameraFOV(Delta), Pilot->CalculateCameraFOV_Implementation(Delta), 0.001f));
+	}
+	for (const EWEVORASpellElement Element : { EWEVORASpellElement::Fire, EWEVORASpellElement::Wind })
+	{
+		for (const EWEVORAGesture Gesture : { EWEVORAGesture::Thrust, EWEVORAGesture::Sweep,
+			EWEVORAGesture::Circle, EWEVORAGesture::Slam })
+		{
+			FWEVORASpellContext Context;
+			Context.Element = Element;
+			Context.Gesture = Gesture;
+			FWEVORASpellLaunch BlueprintLaunch, NativeLaunch;
+			TestTrue(TEXT("Blueprint resolves configured spell"), Pilot->ResolveSpellLaunch(Context, BlueprintLaunch));
+			TestTrue(TEXT("Native compatibility fallback resolves spell"), Pilot->ResolveSpellLaunch_Implementation(Context, NativeLaunch));
+			TestEqual(TEXT("Shape preserved"), BlueprintLaunch.Spell.Shape, NativeLaunch.Spell.Shape);
+			TestEqual(TEXT("Element preserved"), BlueprintLaunch.Spell.Element, NativeLaunch.Spell.Element);
+			TestEqual(TEXT("Delivery preserved"), BlueprintLaunch.Spell.Delivery, NativeLaunch.Spell.Delivery);
+			TestEqual(TEXT("Speed preserved"), BlueprintLaunch.Parameters.Speed, NativeLaunch.Parameters.Speed);
+			TestEqual(TEXT("Radius preserved"), BlueprintLaunch.Parameters.Radius, NativeLaunch.Parameters.Radius);
+			TestEqual(TEXT("Lifetime preserved"), BlueprintLaunch.Parameters.Lifetime, NativeLaunch.Parameters.Lifetime);
+			TestEqual(TEXT("Recoil rule preserved"), Pilot->GetSpellRecoilSpeed(Context), Pilot->GetSpellRecoilSpeed_Implementation(Context));
+		}
+	}
+	FWEVORASpellContext Context;
+	Context.Gesture = EWEVORAGesture::Thrust;
+	Pilot->SpellCastComponent->SpellPower = 2.5f;
+	Pilot->SpellCastComponent->ShapeProfiles[Context.Gesture].SpeedMultiplier = 1.7f;
+	FWEVORASpellLaunch Launch;
+	TestTrue(TEXT("Blueprint uses changed component settings"), Pilot->ResolveSpellLaunch(Context, Launch));
+	TestEqual(TEXT("Configured power is used"), Launch.Spell.Power, 2.5f);
+	TestTrue(TEXT("Configured shape multiplier is used"), FMath::IsNearlyEqual(Launch.Parameters.Speed, 3740.0f));
+	Pilot->SpellCastComponent->ShapeProfiles.Remove(Context.Gesture);
+	TestFalse(TEXT("Blueprint rejects missing shape"), Pilot->ResolveSpellLaunch(Context, Launch));
+	return true;
+}
 #endif

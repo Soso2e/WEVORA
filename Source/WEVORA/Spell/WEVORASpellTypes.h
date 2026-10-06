@@ -89,16 +89,16 @@ USTRUCT(BlueprintType)
 struct WEVORA_API FWEVORASpellLaunch
 {
 	GENERATED_BODY()
-	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	UPROPERTY(BlueprintReadWrite, Category="Spell")
 	FWEVORASpellContext Composition;
-	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	UPROPERTY(BlueprintReadWrite, Category="Spell")
 	FWEVORASpellData Spell;
-	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	UPROPERTY(BlueprintReadWrite, Category="Spell")
 	FVector Direction = FVector::ForwardVector;
 	/** Shooter planar velocity contribution captured before recoil. */
-	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	UPROPERTY(BlueprintReadWrite, Category="Spell")
 	FVector InheritedVelocity = FVector::ZeroVector;
-	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	UPROPERTY(BlueprintReadWrite, Category="Spell")
 	FWEVORASpellProjectileParameters Parameters;
 };
 
