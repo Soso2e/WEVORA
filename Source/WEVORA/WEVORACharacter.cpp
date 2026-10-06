@@ -171,11 +171,14 @@ void AWEVORACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 
 		if (BurstAction)
 		{
-			EnhancedInputComponent->BindAction(BurstAction, ETriggerEvent::Started, this, &AWEVORACharacter::DoBurst);
+			EnhancedInputComponent->BindAction(BurstAction, ETriggerEvent::Started, this, &AWEVORACharacter::DoBurstStart);
+			EnhancedInputComponent->BindAction(BurstAction, ETriggerEvent::Completed, this, &AWEVORACharacter::DoBurstEnd);
+			EnhancedInputComponent->BindAction(BurstAction, ETriggerEvent::Canceled, this, &AWEVORACharacter::DoBurstEnd);
 		}
 		else
 		{
-			PlayerInputComponent->BindKey(EKeys::LeftShift, IE_Pressed, this, &AWEVORACharacter::DoBurst);
+			PlayerInputComponent->BindKey(EKeys::LeftShift, IE_Pressed, this, &AWEVORACharacter::DoBurstStart);
+			PlayerInputComponent->BindKey(EKeys::LeftShift, IE_Released, this, &AWEVORACharacter::DoBurstEnd);
 		}
 
 		if (BrakeAction)
@@ -281,9 +284,6 @@ void AWEVORACharacter::DoDescendStart()
 	CancelSpellForEvasion();
 	bDescending = true;
 	bJumpLaunchPhase = false;
-	bPoweredLastFrame = false;
-	PassiveFloatRemaining = 0.0f;
-	SteeringGraceRemaining = 0.0f;
 	StopJumping();
 	if (GetCharacterMovement()->IsFalling())
 	{
@@ -295,6 +295,18 @@ void AWEVORACharacter::DoDescendStart()
 void AWEVORACharacter::DoDescendEnd()
 {
 	bDescending = false;
+}
+
+void AWEVORACharacter::DoBurstStart()
+{
+	if (bBurstHeld) { return; }
+	bBurstHeld = true;
+	DoBurst();
+}
+
+void AWEVORACharacter::DoBurstEnd()
+{
+	bBurstHeld = false;
 }
 
 void AWEVORACharacter::DoBurst()
@@ -375,16 +387,15 @@ void AWEVORACharacter::OnJumped_Implementation()
 {
 	Super::OnJumped_Implementation();
 	bJumpLaunchPhase = true;
-	PassiveFloatRemaining = 0.0f;
 	FlightState = EWEVORAFlightState::Jumping;
 }
 
 void AWEVORACharacter::ResetFlightInput()
 {
-	bAscending = bDescending = bBraking = false;
-	bJumpLaunchPhase = bPoweredLastFrame = false;
+	bAscending = bDescending = bBraking = bBurstHeld = false;
+	bJumpLaunchPhase = false;
 	PlanarInputDirection = FVector::ZeroVector;
-	PlanarInputMagnitude = AscendHeldTime = SteeringGraceRemaining = PassiveFloatRemaining = 0.0f;
+	PlanarInputMagnitude = AscendHeldTime = 0.0f;
 	SpellMovementMultiplier = SpellMovementTarget = SpellMovementBlendStart = 1.0f;
 	CastRecoveryRemaining = SpellMovementBlendElapsed = 0.0f;
 	StopJumping();
@@ -463,10 +474,10 @@ void AWEVORACharacter::UpdateFlightBeforeMovement(float DeltaSeconds)
 	// Falling mode retains Unreal's swept collision, ceiling response, floor detection and landing.
 	// Only vertical support changes; planar speed is independent of climb/dive speed.
 	UpdateSpellMovement(DeltaSeconds);
-	Movement->MaxAcceleration = FMath::Max(0.0f, GlideAcceleration) * SpellMovementMultiplier;
 	Movement->JumpZVelocity = FMath::Max(0.0f, JumpLaunchSpeed);
 	Movement->BrakingDecelerationFalling = FMath::Max(0.0f, GlideBrakingDeceleration);
 	const bool bGrounded = Movement->IsMovingOnGround();
+	Movement->MaxAcceleration = FMath::Max(0.0f, bGrounded ? GlideAcceleration : AirSteeringAcceleration) * SpellMovementMultiplier;
 	ManaComponent->UpdateRecovery(DeltaSeconds, bGrounded);
 	AscendHeldTime = bAscending ? AscendHeldTime + DeltaSeconds : 0.0f;
 	AirSpeedLimit = FMath::FInterpConstantTo(AirSpeedLimit, FMath::Max(0.0f, CruiseSpeed),
@@ -487,8 +498,7 @@ void AWEVORACharacter::UpdateFlightBeforeMovement(float DeltaSeconds)
 	{
 		FlightState = EWEVORAFlightState::Grounded;
 		Movement->GravityScale = FallGravityScale;
-		bJumpLaunchPhase = bPoweredLastFrame = false;
-		PassiveFloatRemaining = SteeringGraceRemaining = 0.0f;
+		bJumpLaunchPhase = false;
 		AirSpeedLimit = FMath::Max(0.0f, CruiseSpeed);
 		return;
 	}
@@ -498,28 +508,21 @@ void AWEVORACharacter::UpdateFlightBeforeMovement(float DeltaSeconds)
 	{
 		FlightState = EWEVORAFlightState::Diving;
 		Movement->GravityScale = FMath::Max(FallGravityScale, DiveGravityScale);
-		bJumpLaunchPhase = bPoweredLastFrame = false;
-		PassiveFloatRemaining = SteeringGraceRemaining = 0.0f;
+		bJumpLaunchPhase = false;
 		return;
 	}
 
-	SteeringGraceRemaining = bSteering ? FMath::Max(0.0f, SteeringGraceDuration) :
-		FMath::Max(0.0f, SteeringGraceRemaining - DeltaSeconds);
 	const bool bWantsAscent = bAscending && AscendHeldTime >= AscendHoldDelay;
 	// Do not erase a tap jump's upward impulse when WASD is already held.
-	if (bJumpLaunchPhase && Movement->Velocity.Z > 120.0f && !bWantsAscent && !bBraking)
+	if (bJumpLaunchPhase && Movement->Velocity.Z > 120.0f && !bWantsAscent && !bBraking && !bBurstHeld)
 	{
 		FlightState = EWEVORAFlightState::Jumping;
 		Movement->GravityScale = FMath::Max(0.0f, FallGravityScale);
 		return;
 	}
-	if (bJumpLaunchPhase)
-	{
-		bJumpLaunchPhase = false;
-		PassiveFloatRemaining = FMath::Max(0.0f, PassiveFloatDuration) + FMath::Max(0.0f, GravityReturnDuration);
-	}
+	bJumpLaunchPhase = false;
 
-	const bool bWantsSupport = bHoverEnabled && (bWantsAscent || bBraking || bSteering || SteeringGraceRemaining > 0.0f);
+	const bool bWantsSupport = bHoverEnabled && (bWantsAscent || bBraking || bBurstHeld || bSteering);
 	const float ManaRate = FMath::Max(0.0f, bWantsAscent ? AscendManaPerSecond : HoverManaPerSecond);
 	if (bWantsSupport && ManaComponent->Mana > 0.0f && ManaComponent->ConsumeMana(ManaRate * DeltaSeconds))
 	{
@@ -530,36 +533,13 @@ void AWEVORACharacter::UpdateFlightBeforeMovement(float DeltaSeconds)
 		const float MaxDelta = FMath::Max(0.0f, MaxHoverAcceleration) * DeltaSeconds *
 			(bWantsAscent ? SpellMovementMultiplier : 1.0f);
 		Movement->Velocity.Z += FMath::Clamp((TargetZ - Movement->Velocity.Z) * Response, -MaxDelta, MaxDelta);
-		bPoweredLastFrame = true;
-		PassiveFloatRemaining = 0.0f;
 		return;
 	}
 
-	if (bWantsSupport || (bPoweredLastFrame && ManaComponent->Mana <= 0.0f))
-	{
-		// Empty mana must lead directly to falling, without repeated free float resets.
-		PassiveFloatRemaining = SteeringGraceRemaining = 0.0f;
-	}
-	else if (bPoweredLastFrame)
-	{
-		PassiveFloatRemaining = FMath::Max(0.0f, PassiveFloatDuration) + FMath::Max(0.0f, GravityReturnDuration);
-	}
-	bPoweredLastFrame = false;
-	if (PassiveFloatRemaining > 0.0f)
-	{
-		const float ReturnDuration = FMath::Max(0.0f, GravityReturnDuration);
-		const float ReturnAlpha = ReturnDuration > 0.0f ?
-			1.0f - FMath::Clamp(PassiveFloatRemaining / ReturnDuration, 0.0f, 1.0f) : 0.0f;
-		Movement->GravityScale = FMath::Lerp(FMath::Max(0.0f, PassiveGravityScale),
-			FMath::Max(0.0f, FallGravityScale), ReturnAlpha);
-		PassiveFloatRemaining = FMath::Max(0.0f, PassiveFloatRemaining - DeltaSeconds);
-		FlightState = EWEVORAFlightState::Coasting;
-	}
-	else
-	{
-		Movement->GravityScale = FMath::Max(0.0f, FallGravityScale);
-		FlightState = EWEVORAFlightState::Falling;
-	}
+	// Releasing all support input (or exhausting mana) restores normal gravity immediately.
+	// Residual horizontal velocity alone never grants passive altitude support.
+	Movement->GravityScale = FMath::Max(0.0f, FallGravityScale);
+	FlightState = EWEVORAFlightState::Falling;
 }
 
 void AWEVORACharacter::UpdateBrake(float DeltaSeconds)

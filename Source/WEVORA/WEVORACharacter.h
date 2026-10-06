@@ -108,15 +108,14 @@ protected:
 	float MaxHoverAcceleration = 2200.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Hover", meta=(ClampMin="0.0"))
 	float HoverManaPerSecond = 8.0f;
-	/** Brief paid support after releasing planar input, for direction changes. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Hover", meta=(ClampMin="0.0"))
+	/** Legacy Blueprint fields retained for load compatibility; input release now restores gravity immediately. */
+	UPROPERTY(BlueprintReadWrite, Category="WEVORA Movement|Hover", meta=(DeprecatedProperty, DeprecationMessage="Input release now restores normal gravity immediately."))
 	float SteeringGraceDuration = 0.2f;
-	/** Unpowered float near the jump apex or after releasing powered flight. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Hover", meta=(ClampMin="0.0"))
+	UPROPERTY(BlueprintReadWrite, Category="WEVORA Movement|Hover", meta=(DeprecatedProperty, DeprecationMessage="Passive float has been replaced by input-driven hover."))
 	float PassiveFloatDuration = 1.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Hover", meta=(ClampMin="0.0"))
+	UPROPERTY(BlueprintReadWrite, Category="WEVORA Movement|Hover", meta=(DeprecatedProperty, DeprecationMessage="Passive float has been replaced by input-driven hover."))
 	float PassiveGravityScale = 0.12f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Hover", meta=(ClampMin="0.0"))
+	UPROPERTY(BlueprintReadWrite, Category="WEVORA Movement|Hover", meta=(DeprecatedProperty, DeprecationMessage="Input release now restores normal gravity immediately."))
 	float GravityReturnDuration = 0.35f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Ground", meta=(ClampMin="0.0"))
 	float GroundSpeed = 500.0f;
@@ -125,9 +124,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Glide", meta=(ClampMin="0.0"))
 	float CruiseSpeed = 1200.0f;
 
-	/** Acceleration while steering. Higher values make input feel more immediate. */
+	/** Ground steering acceleration. Retained for existing Blueprint settings. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Glide", meta=(ClampMin="0.0"))
 	float GlideAcceleration = 2100.0f;
+	/** Air steering acceleration in cm/s^2, independent of ground acceleration and dash impulse. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Glide", meta=(ClampMin="0.0"))
+	float AirSteeringAcceleration = 550.0f;
 
 	/** Deceleration when no planar input is held. Low values preserve inertia. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Movement|Glide", meta=(ClampMin="0.0"))
@@ -221,6 +223,9 @@ protected:
 	/** True while brake input is held. */
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="WEVORA Movement|State")
 	bool bBraking = false;
+	/** Shift hold supports altitude without Alt's planar braking. */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="WEVORA Movement|State")
+	bool bBurstHeld = false;
 
 	/** Last steering direction, retained for Blueprint feedback. Burst uses current input or velocity. */
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="WEVORA Movement|State")
@@ -231,11 +236,8 @@ protected:
 	FVector PlanarInputDirection = FVector::ZeroVector;
 	float PlanarInputMagnitude = 0.0f;
 	float AscendHeldTime = 0.0f;
-	float SteeringGraceRemaining = 0.0f;
-	float PassiveFloatRemaining = 0.0f;
 	float AirSpeedLimit = 1200.0f;
 	bool bJumpLaunchPhase = false;
-	bool bPoweredLastFrame = false;
 
 public:
 
@@ -304,6 +306,14 @@ public:
 	/** Trigger an impulse in the current steering / travel direction. */
 	UFUNCTION(BlueprintCallable, Category="WEVORA Movement")
 	virtual void DoBurst();
+
+	/** Dash once on press, then support altitude for the duration of the hold. */
+	UFUNCTION(BlueprintCallable, Category="WEVORA Movement")
+	virtual void DoBurstStart();
+
+	/** Release dash hover without clearing Alt, Space or steering input. */
+	UFUNCTION(BlueprintCallable, Category="WEVORA Movement")
+	virtual void DoBurstEnd();
 
 	/** Begin rapid braking. */
 	UFUNCTION(BlueprintCallable, Category="WEVORA Movement")

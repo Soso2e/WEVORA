@@ -1,8 +1,19 @@
 # WEVORA Progress
 
-最終更新: 2026-10-05
+最終更新: 2026-10-06
 
 現在フェーズ: Fire / Windの汎用魔法基盤（実装済み・未確認、Editorビルド/自動確認済み・ユーザーのPIE確認待ち）
+
+## 2026-10-06 移動調整
+
+- 変更前に`git pull --ff-only origin main`を実行し、最新main `1b5844c`と一致を確認。既存の隔離checkout `work`で作業。
+- 空中操舵加速度を新しい`AirSteeringAcceleration`（初期値550 cm/s²、従来2100の約26%）へ分離。地上加速度、ダッシュ追加速度、最高速度、魔法状態の移動倍率は維持。
+- Shift押下時は単発ダッシュ、保持中は水平慣性を残すマナホバー。Enhanced InputのCompleted/CanceledとキーReleasedで保持解除。既存`DoBurst()`は単発APIとして維持し、保持入力向け`DoBurstStart/End`を追加。
+- Altは直接ブレーキ＋ホバー。Ctrl優先、Space上昇、マナ不足時の自然落下、UnPossessでの入力リセットを維持。
+- 無入力時の頂点浮遊・入力猶予・飛行解除後の低重力を廃止。WASD保持中の滑らかな垂直減衰は維持。支え入力をすべて離すと次の移動更新で通常重力に戻る。旧浮遊UPROPERTYとCoasting列挙値はBlueprint互換性のため残す。
+- 既存飛行テストを新仕様に更新し、30/60/120 fpsで自然落下、空中加速、Shift保持/解除/重複押下、Alt直接ホバー、Ctrl優先、マナ不足、操作解除を確認する回帰ケースを追加。
+- 検証済み: 差分と入力経路の静的確認、`git diff --check`。UE_ROOTは設定されているが実体がなく、今回のEditorビルド・Automationテストは未実行。過去の成功記録を今回の検証結果として扱わない。実入力・操作感はPIE確認待ち。
+- 調整値と確認手順: `Source/WEVORA/Movement/README.md`。
 
 ## 現在の状態
 
