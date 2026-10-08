@@ -6,6 +6,7 @@
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FWEVORAOnSpellCast, const FWEVORASpellContext&, Context);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FWEVORAOnSpellPresentationChanged, EWEVORAWeavingState, State, const FWEVORASpellContext&, Context);
+DECLARE_MULTICAST_DELEGATE_OneParam(FWEVORAOnGestureSample, FVector2D);
 
 UCLASS(ClassGroup=(WEVORA), meta=(BlueprintSpawnableComponent))
 class WEVORA_API UWEVORASpellWeavingComponent : public UActorComponent
@@ -13,6 +14,8 @@ class WEVORA_API UWEVORASpellWeavingComponent : public UActorComponent
 	GENERATED_BODY()
 public:
 	UWEVORASpellWeavingComponent();
+	/** Presentation receives the same finite, positive-up input as recognition. */
+	FWEVORAOnGestureSample OnGestureSample;
 	UPROPERTY(BlueprintAssignable, Category="Spell")
 	FWEVORAOnSpellCast OnSpellCast;
 	/** Selection/state snapshot for presentation; independent of casting gameplay. */

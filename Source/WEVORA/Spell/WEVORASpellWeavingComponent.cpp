@@ -52,8 +52,10 @@ void UWEVORASpellWeavingComponent::BeginShape()
 void UWEVORASpellWeavingComponent::RecordLook(FVector2D LookDelta)
 {
 	if (State != EWEVORAWeavingState::Shaping) { return; }
+	if (!FMath::IsFinite(LookDelta.X) || !FMath::IsFinite(LookDelta.Y)) { return; }
 	if (bInvertLookY) { LookDelta.Y *= -1.0f; }
 	Recorder.Record(LookDelta, Thresholds.MinimumSampleDistance);
+	OnGestureSample.Broadcast(LookDelta);
 }
 
 void UWEVORASpellWeavingComponent::EndShape()

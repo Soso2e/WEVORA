@@ -24,6 +24,16 @@ Controllerの`bShowSpellReticle`で表示切替。追加Widget素材・Blueprint
 
 カメラ実装の参考: [Epic公式 Spring Arm資料](https://dev.epicgames.com/documentation/en-us/unreal-engine/using-spring-arm-components-in-unreal-engine)。
 
+### 描画トレイル（仮）
+
+LMB保持→E保持中にマウスを動かすと、中央から光る軌跡が伸びます。
+Fireはオレンジ、Windは水色。白い芯と薄い外周を重ね、尾は約0.45秒で消えます。
+Eを離す・発射・キャンセル後も残った尾が自然に消え、次の描き始めでリセットします。
+認識と同じ反転済み入力を表示用イベントで受け取り、判定・照準には影響しません。
+表示は画面上の仮エフェクトで、追加Niagara素材は不要。最大128点に制限しています。
+`WEVORAReticleWidget`の`bShowGestureTrail` / `TrailInputScale` / `TrailLifetime`で調整できます。
+レティクルWidgetを非表示にするとトレイルも非表示になります。
+
 ## 構造
 
 - Character: キーをコンポーネントへ直接Bindし、DoLookから同じ入力を転送。
