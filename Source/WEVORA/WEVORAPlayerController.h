@@ -19,6 +19,10 @@ class AWEVORAPlayerController : public APlayerController
 	GENERATED_BODY()
 	
 protected:
+	UPROPERTY(EditAnywhere, Category="WEVORA Aim")
+	bool bShowSpellReticle = true;
+	UPROPERTY(Transient)
+	TObjectPtr<UUserWidget> SpellReticleWidget;
 
 	/** Input Mapping Contexts */
 	UPROPERTY(EditAnywhere, Category ="Input|Input Mappings")

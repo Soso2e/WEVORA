@@ -9,6 +9,18 @@ class UWEVORASpellWeavingComponent;
 class AWEVORASpellProjectile;
 class AWEVORASpellDelivery;
 
+/** Shared camera/muzzle solution used by both the reticle and actual casting. */
+struct FWEVORAAimSolution
+{
+	FVector Target = FVector::ZeroVector;
+	FVector Start = FVector::ZeroVector;
+	FVector Direction = FVector::ForwardVector;
+	FVector Obstruction = FVector::ZeroVector;
+	bool bTargetIsDamageable = false;
+	bool bBlocked = false;
+	bool bMuzzleBlocked = false;
+};
+
 /** Bridges completed composition to runtime behaviour without changing the input state machine. */
 UCLASS(ClassGroup=(WEVORA), meta=(BlueprintSpawnableComponent))
 class WEVORA_API UWEVORASpellCastComponent : public UActorComponent
@@ -32,7 +44,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="0"))
 	float SpawnDistance = 80.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Movement", meta=(ClampMin="0", ClampMax="1"))
-	float HorizontalVelocityInheritance = 0.4f;
+	float HorizontalVelocityInheritance = 0.0f;
+	/** Opt-in legacy drift. Accurate TPS aim leaves this disabled, including old Blueprint defaults. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Movement")
+	bool bInheritShooterVelocity = false;
+	bool GetAimSolution(float Radius, FWEVORAAimSolution& OutAim) const;
 	/** Planar recoil in cm/s; Thrust uses the stronger setting. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Movement", meta=(ClampMin="0"))
 	float RecoilSpeed = 80.0f;

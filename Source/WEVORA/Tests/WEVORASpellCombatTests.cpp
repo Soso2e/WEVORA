@@ -16,6 +16,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Camera/PlayerCameraManager.h"
+#include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/ProjectileMovementComponent.h"
@@ -120,6 +121,73 @@ struct FSpellCombatWorld
 		return Actor;
 	}
 };
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORATPSAimTest, "WEVORA.Spell.Combat.TPSAim",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORATPSAimTest::RunTest(const FString& Parameters)
+{
+	FSpellCombatWorld Scene;
+	if (!TestNotNull(TEXT("Saved pilot"), Scene.Pilot) || !TestNotNull(TEXT("Saved enemy"), Scene.Enemy)) { return false; }
+	FVector ViewLocation;
+	FRotator ViewRotation;
+	Scene.Controller->GetPlayerViewPoint(ViewLocation, ViewRotation);
+	TestTrue(TEXT("Shoulder camera leaves player left of the aim axis"),
+		FVector::DotProduct(Scene.Pilot->GetActorLocation() - ViewLocation,
+			FRotationMatrix(ViewRotation).GetUnitAxis(EAxis::Y)) < -40.0f);
+	Scene.Pilot->BeginPrecisionAim();
+	Scene.Step(0.5f);
+	TestTrue(TEXT("Held precision aim settles to configured FOV"),
+		FMath::IsNearlyEqual(Scene.Pilot->GetFollowCamera()->FieldOfView, Scene.Pilot->AimFOV, 0.1f));
+	Scene.Pilot->EndPrecisionAim();
+	Scene.Step(0.5f);
+	TestTrue(TEXT("Release restores travel FOV"), Scene.Pilot->GetFollowCamera()->FieldOfView > 85.0f);
+	Scene.AimTarget(FRotator(10, 25, 0));
+	FWEVORAAimSolution Aim;
+	TestTrue(TEXT("Shared camera aim available"), Scene.Pilot->SpellCastComponent->GetAimSolution(16, Aim));
+	TestTrue(TEXT("Reticle recognizes living target"), Aim.bTargetIsDamageable);
+	TestFalse(TEXT("Open shoulder shot is clear"), Aim.bBlocked);
+	const FRotator BeforeShape = Scene.Controller->GetControlRotation();
+	Scene.Pilot->GetCharacterMovement()->Velocity = FVector(1200, 700, 0);
+	Scene.Weave();
+	TestTrue(TEXT("Gesture input preserves camera aim"), Scene.Controller->GetControlRotation().Equals(BeforeShape, 0.001f));
+	AWEVORASpellProjectile* Shot = Scene.Shot();
+	if (!TestNotNull(TEXT("Shoulder shot spawned"), Shot)) { return false; }
+	TestTrue(TEXT("Cast and reticle share launch origin"), Shot->GetActorLocation().Equals(Aim.Start, 0.01f));
+	TestTrue(TEXT("Actual velocity converges on crosshair target while moving"),
+		FVector::DotProduct(Shot->Movement->Velocity.GetSafeNormal(), (Aim.Target - Shot->GetActorLocation()).GetSafeNormal()) > 0.9999f);
+	Scene.Step(0.8f);
+	TestTrue(TEXT("Offset moving shot actually damages target"), Scene.Enemy->HealthComponent->Health <= 75.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORATPSCoverTest, "WEVORA.Spell.Combat.TPSCoverPreview",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORATPSCoverTest::RunTest(const FString& Parameters)
+{
+	FSpellCombatWorld Scene;
+	if (!Scene.Pilot || !Scene.Enemy) { return false; }
+	Scene.AimTarget(FRotator::ZeroRotator);
+	FWEVORAAimSolution Aim;
+	Scene.Pilot->SpellCastComponent->GetAimSolution(16, Aim);
+	// A narrow obstacle on the muzzle path while the shoulder camera can see past it.
+	AActor* Cover = Scene.Wall(FMath::Lerp(Aim.Start, Aim.Target, 0.15f), FVector(10, 10, 60));
+	Scene.Pilot->SpellCastComponent->GetAimSolution(16, Aim);
+	TestTrue(TEXT("Camera still sees target beyond cover"), Aim.bTargetIsDamageable);
+	TestTrue(TEXT("Reticle warns of obstructed projectile path"), Aim.bBlocked);
+	TestFalse(TEXT("Distant cover does not prevent spawning"), Aim.bMuzzleBlocked);
+	Scene.Weave();
+	TestNotNull(TEXT("Bolt launches toward cover"), Scene.Shot());
+	Scene.Step(0.8f);
+	TestEqual(TEXT("Cover stops damage"), Scene.Enemy->HealthComponent->Health, 100.0f);
+	Cover->Destroy();
+	Scene.Pilot->SpellCastComponent->GetAimSolution(16, Aim);
+	Scene.Wall(Scene.Pilot->GetPawnViewLocation() + Aim.Direction * 35.0f, FVector(10, 30, 30));
+	Scene.Pilot->SpellCastComponent->GetAimSolution(16, Aim);
+	TestTrue(TEXT("Muzzle obstruction is reported"), Aim.bMuzzleBlocked);
+	Scene.Weave();
+	TestNull(TEXT("No shot spawns through nearby wall"), Scene.Shot());
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORASpellAirCombatTest, "WEVORA.Spell.Combat.AirborneCastToDamage",

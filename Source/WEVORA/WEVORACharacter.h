@@ -50,6 +50,18 @@ class AWEVORACharacter : public ACharacter
 	UCameraComponent* FollowCamera;
 
 public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Aim")
+	FVector ShoulderOffset = FVector(0.0f, 85.0f, 55.0f);
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Aim")
+	float AimArmLength = 300.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Aim")
+	float AimFOV = 70.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Aim")
+	bool bHoldViewWhileShaping = true;
+	bool bPrecisionAim = false;
+	float TravelArmLength = 400.0f;
+	void BeginPrecisionAim() { bPrecisionAim = true; }
+	void EndPrecisionAim() { bPrecisionAim = false; }
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Health")
 	UWEVORAHealthComponent* HealthComponent;
 

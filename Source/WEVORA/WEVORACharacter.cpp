@@ -109,6 +109,10 @@ void AWEVORACharacter::BeginPlay()
 		Movement->SetMovementMode(MOVE_Walking);
 	}
 	AirSpeedLimit = CruiseSpeed;
+	// Apply after Blueprint component defaults have loaded.
+	TravelArmLength = CameraBoom->TargetArmLength;
+	CameraBoom->SocketOffset = ShoulderOffset;
+	CameraBoom->bEnableCameraRotationLag = false;
 
 	if (FollowCamera)
 	{
@@ -133,6 +137,8 @@ void AWEVORACharacter::Tick(float DeltaSeconds)
 
 void AWEVORACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
+	PlayerInputComponent->BindKey(EKeys::RightMouseButton, IE_Pressed, this, &AWEVORACharacter::BeginPrecisionAim);
+	PlayerInputComponent->BindKey(EKeys::RightMouseButton, IE_Released, this, &AWEVORACharacter::EndPrecisionAim);
 	PlayerInputComponent->BindKey(EKeys::Y, IE_Pressed, this, &AWEVORACharacter::DoRecenterView).bConsumeInput = false;
 	// Asset-free fallback; Blueprint/Enhanced Input may also call the component API.
 	PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, SpellWeavingComponent, &UWEVORASpellWeavingComponent::BeginWeave).bConsumeInput = false;
@@ -246,6 +252,7 @@ void AWEVORACharacter::DoMove(float Right, float Forward)
 void AWEVORACharacter::DoLook(float Yaw, float Pitch)
 {
 	SpellWeavingComponent->RecordLook(FVector2D(Yaw, Pitch));
+	if (bHoldViewWhileShaping && SpellWeavingComponent->State == EWEVORAWeavingState::Shaping) { return; }
 	if (GetController())
 	{
 		AddControllerYawInput(Yaw);
@@ -411,6 +418,7 @@ void AWEVORACharacter::OnJumped_Implementation()
 
 void AWEVORACharacter::ResetFlightInput()
 {
+	bPrecisionAim = false;
 	bAscending = bDescending = bBraking = bBurstHeld = false;
 	bJumpLaunchPhase = false;
 	PlanarInputDirection = FVector::ZeroVector;
@@ -577,7 +585,11 @@ void AWEVORACharacter::UpdateCameraFeel(float DeltaSeconds)
 		return;
 	}
 
-	const float NewFOV = CalculateCameraFOV(DeltaSeconds);
+	CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength,
+		bPrecisionAim ? AimArmLength : TravelArmLength, DeltaSeconds, 12.0f);
+	const float NewFOV = bPrecisionAim
+		? FMath::FInterpTo(FollowCamera->FieldOfView, AimFOV, DeltaSeconds, 12.0f)
+		: CalculateCameraFOV(DeltaSeconds);
 	if (FMath::IsFinite(NewFOV))
 	{
 		FollowCamera->SetFieldOfView(FMath::Clamp(NewFOV, 5.0f, 170.0f));

@@ -4,6 +4,26 @@
 QでFire/Windを切り替えます。編み中・Shape確定後も変更でき、次回も属性を保持します。
 Eを再度押すとShapeを作り直します。未確定状態でLMBを離すとキャンセルします。
 
+## TPS照準（2026-10-08）
+
+- 右肩越しカメラ。キャラクターを画面中央から左へずらし、中央レティクルで狙います。
+- 右クリック保持で精密照準（カメラ距離300cm・FOV70）。解除で通常の距離・速度連動FOVへ滑らかに戻ります。
+- レティクルは白が通常、緑が生存中のHealthComponentを持つ対象、赤い×が射線遮断。敵の自動追尾・ロックオンは行いません。
+- E保持中のマウス操作は形の入力に使い、カメラの向きを固定します。Eを離した後は再びマウスで照準を調整できます。描く前に敵を狙っておくと狙いを保てます。
+- カメラ中央から対象点を求め、Playerの発射位置からその点へ弾を飛ばします。レティクルと発射処理は同じ`GetAimSolution`を使用します。
+- 弾の半径を含めてPlayerからの射線を検査。肩越しに敵が見えていても壁が弾を遮る場合は赤い×になります。発射直前の壁はSpawnを止め、それより先の壁には弾が衝突します。
+- 移動速度の弾への加算は既定で無効。保存済みBlueprintに旧`HorizontalVelocityInheritance=0.4`が残っていても`bInheritShooterVelocity=false`なら照準から横へずれません。旧挙動への明示的な切替時は予告弾道とずれます。
+- 既存の魔法弾は照準・発射位置の検査対象から除外。弾速・寿命・実衝突・属性効果は維持。動いている敵には弾の飛行時間を考慮した先読みが必要です。
+
+調整: Characterの`WEVORA Aim`で`ShoulderOffset` / `AimArmLength` / `AimFOV` / `bHoldViewWhileShaping`。
+Controllerの`bShowSpellReticle`で表示切替。追加Widget素材・Blueprint移行は不要です。
+
+実プレイ確認: Editorを再起動して、(1) 中央に照準・キャラが左側、(2) 敵に合わせると緑、
+(3) RMB保持/解除、(4) Eで描いても照準が動かない、(5) 静止/横移動/飛行から命中、
+(6) 壁の右側からカメラだけ覗いた時は赤い×と壁への衝突、(7) 至近距離、上下の敵、画面比率を確認してください。
+
+カメラ実装の参考: [Epic公式 Spring Arm資料](https://dev.epicgames.com/documentation/en-us/unreal-engine/using-spring-arm-components-in-unreal-engine)。
+
 ## 構造
 
 - Character: キーをコンポーネントへ直接Bindし、DoLookから同じ入力を転送。
