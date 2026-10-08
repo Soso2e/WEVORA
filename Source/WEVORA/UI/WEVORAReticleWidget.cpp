@@ -3,6 +3,55 @@
 #include "Spell/WEVORASpellCastComponent.h"
 #include "Spell/WEVORASpellWeavingComponent.h"
 #include "Rendering/DrawElements.h"
+#include "AI/WEVORAEnemy.h"
+#include "AI/WEVORAHealthComponent.h"
+#include "Spell/WEVORASpellReactionComponent.h"
+#include "Blueprint/WidgetLayoutLibrary.h"
+#include "GameFramework/PlayerController.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
+#include "Styling/CoreStyle.h"
+
+int32 UWEVORAReticleWidget::DrawEnemyStatus(const FGeometry& Geometry,
+	FSlateWindowElementList& Elements, int32 Layer) const
+{
+	APlayerController* PC = GetOwningPlayer();
+	if (!bShowEnemyStatus || !PC || !GetWorld()) { return Layer; }
+	FVector ViewLocation;
+	FRotator ViewRotation;
+	PC->GetPlayerViewPoint(ViewLocation, ViewRotation);
+	for (TActorIterator<AWEVORAEnemy> It(GetWorld()); It; ++It)
+	{
+		const AWEVORAEnemy* Enemy = *It;
+		if (!Enemy->HealthComponent->IsAlive() || Enemy->IsHidden()) { continue; }
+		FHitResult Hit;
+		FCollisionQueryParams Query(SCENE_QUERY_STAT(EnemyStatusSight), false, PC->GetPawn());
+		Query.AddIgnoredActor(Enemy);
+		if (GetWorld()->LineTraceSingleByChannel(Hit, ViewLocation, Enemy->GetActorLocation(), ECC_Visibility, Query)) { continue; }
+		FVector2D Position;
+		if (!UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(PC,
+			Enemy->GetActorLocation() + FVector(0, 0, 100), Position, true)) { continue; }
+		const FVector2D Size = Geometry.GetLocalSize();
+		if (Position.X < 0 || Position.Y < 0 || Position.X > Size.X || Position.Y > Size.Y) { continue; }
+		const bool bBurning = Enemy->SpellReactionComponent->HasState(EWEVORASpellTargetState::Burning);
+		const FVector2D PanelPosition = Position - FVector2D(80, 40);
+		const FVector2D PanelSize(160, bBurning ? 50 : 28);
+		FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(PanelSize, FSlateLayoutTransform(PanelPosition)),
+			FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None, FLinearColor(0.01f, 0.01f, 0.015f, 0.8f));
+		const FString HP = FString::Printf(TEXT("HP %.0f / %.0f"), Enemy->HealthComponent->Health, Enemy->HealthComponent->MaxHealth);
+		FSlateDrawElement::MakeText(Elements, Layer + 1,
+			Geometry.ToPaintGeometry(PanelSize, FSlateLayoutTransform(PanelPosition + FVector2D(10, 4))),
+			HP, FCoreStyle::GetDefaultFontStyle("Bold", 14), ESlateDrawEffect::None, FLinearColor::White);
+		if (bBurning)
+		{
+			FSlateDrawElement::MakeText(Elements, Layer + 1,
+				Geometry.ToPaintGeometry(PanelSize, FSlateLayoutTransform(PanelPosition + FVector2D(10, 26))),
+				FString(TEXT("燃焼中")), FCoreStyle::GetDefaultFontStyle("Bold", 13),
+				ESlateDrawEffect::None, FLinearColor(1.0f, 0.45f, 0.08f));
+		}
+	}
+	return Layer + 1;
+}
 
 void UWEVORAReticleWidget::NativeConstruct()
 {
@@ -85,7 +134,8 @@ int32 UWEVORAReticleWidget::NativePaint(const FPaintArgs& Args, const FGeometry&
 	const FSlateRect& CullingRect, FSlateWindowElementList& Elements,
 	int32 LayerId, const FWidgetStyle& Style, bool bParentEnabled) const
 {
-	const int32 Layer = Super::NativePaint(Args, Geometry, CullingRect, Elements, LayerId, Style, bParentEnabled) + 1;
+	const int32 Layer = DrawEnemyStatus(Geometry, Elements,
+		Super::NativePaint(Args, Geometry, CullingRect, Elements, LayerId, Style, bParentEnabled) + 1) + 1;
 	const AWEVORACharacter* Pilot = Cast<AWEVORACharacter>(GetOwningPlayerPawn());
 	if (!Pilot || !Pilot->SpellCastComponent || !Pilot->SpellWeavingComponent) { return Layer; }
 	const FVector2D Center = Geometry.GetLocalSize() * 0.5f;

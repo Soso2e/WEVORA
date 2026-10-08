@@ -5,6 +5,8 @@
 #include "AIController.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/PointLightComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/World.h"
 #include "GameFramework/FloatingPawnMovement.h"
 #include "GameFramework/PlayerController.h"
@@ -39,7 +41,71 @@ AWEVORAEnemy::AWEVORAEnemy()
 	HealthComponent = CreateDefaultSubobject<UWEVORAHealthComponent>(TEXT("HealthComponent"));
 	HealthComponent->bDestroyOwnerOnDeath = true;
 	SpellReactionComponent = CreateDefaultSubobject<UWEVORASpellReactionComponent>(TEXT("SpellReactionComponent"));
+	BurningLight = CreateDefaultSubobject<UPointLightComponent>(TEXT("BurningLight"));
+	BurningLight->SetupAttachment(Collision);
+	BurningLight->SetLightColor(FLinearColor(1.0f, 0.2f, 0.02f));
+	BurningLight->SetIntensity(1800.0f);
+	BurningLight->SetAttenuationRadius(200.0f);
+	BurningLight->SetCastShadows(false);
+	BurningLight->SetVisibility(false);
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cone(TEXT("/Engine/BasicShapes/Cone.Cone"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Glow(TEXT("/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_SimpleGlow.M_SimpleGlow"));
+	for (int32 Index = 0; Index < 6; ++Index)
+	{
+		UStaticMeshComponent* Flame = CreateDefaultSubobject<UStaticMeshComponent>(*FString::Printf(TEXT("BurningFlame%d"), Index));
+		Flame->SetupAttachment(Collision);
+		Flame->SetAbsolute(false, true, false);
+		Flame->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Flame->SetCastShadow(false);
+		Flame->SetVisibility(false);
+		if (Cone.Succeeded()) { Flame->SetStaticMesh(Cone.Object); }
+		if (Glow.Succeeded()) { Flame->SetMaterial(0, Glow.Object); }
+		BurningFlames.Add(Flame);
+	}
 	ProjectileClass = AWEVORAEnemyProjectile::StaticClass();
+}
+
+void AWEVORAEnemy::BeginPlay()
+{
+	Super::BeginPlay();
+	if (GetNetMode() == NM_DedicatedServer) { return; }
+	// Reuse the project's glow material; no new shader or Niagara assets are required.
+	if (!BurningFlames.IsEmpty())
+	{
+		UMaterialInstanceDynamic* Glow = BurningFlames[0]->CreateDynamicMaterialInstance(0);
+		if (Glow)
+		{
+			TArray<FMaterialParameterInfo> Parameters;
+			TArray<FGuid> IDs;
+			Glow->GetAllVectorParameterInfo(Parameters, IDs);
+			for (const FMaterialParameterInfo& Parameter : Parameters)
+			{
+				Glow->SetVectorParameterValue(Parameter.Name, FLinearColor(3.0f, 0.35f, 0.01f));
+			}
+			for (UStaticMeshComponent* Flame : BurningFlames) { Flame->SetMaterial(0, Glow); }
+		}
+	}
+	UpdateBurningVisual();
+}
+
+void AWEVORAEnemy::UpdateBurningVisual()
+{
+	const bool bBurning = GetNetMode() != NM_DedicatedServer && bShowBurningEffect
+		&& HealthComponent->IsAlive() && SpellReactionComponent->HasState(EWEVORASpellTargetState::Burning);
+	BurningLight->SetVisibility(bBurning);
+	const float Time = GetWorld()->GetTimeSeconds();
+	for (int32 Index = 0; Index < BurningFlames.Num(); ++Index)
+	{
+		UStaticMeshComponent* Flame = BurningFlames[Index];
+		Flame->SetVisibility(bBurning);
+		if (!bBurning) { continue; }
+		const float Phase = FMath::Frac(Time * 1.3f + Index / 6.0f);
+		const float Angle = Index * PI / 3.0f + Time * 0.3f;
+		const float Pulse = 0.8f + 0.2f * FMath::Sin(Time * 17.0f + Index * 2.0f);
+		Flame->SetWorldLocation(GetActorLocation() + FVector(FMath::Cos(Angle) * 32.0f, FMath::Sin(Angle) * 32.0f, -20.0f + Phase * 85.0f));
+		Flame->SetRelativeScale3D(FVector(0.16f * (1.0f - Phase) * Pulse, 0.16f * (1.0f - Phase) * Pulse, 0.45f * Pulse));
+	}
+	if (bBurning) { BurningLight->SetIntensity(1800.0f + 400.0f * FMath::Sin(Time * 19.0f)); }
 }
 
 bool AWEVORAEnemy::IsValidTarget(const APawn* Candidate) const
@@ -69,6 +135,7 @@ void AWEVORAEnemy::SetWindupVisual(bool bActive)
 void AWEVORAEnemy::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	UpdateBurningVisual();
 	if (!HasAuthority() || !HealthComponent->IsAlive()) { return; }
 	// Yield steering and attacks to swept reaction displacement; resume normal AI afterward.
 	if (SpellReactionComponent->IsDisplaced())

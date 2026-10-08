@@ -6,6 +6,12 @@
 
 ## 2026-10-08 Player攻撃の確認
 
+### 的の頭上HPと燃焼表示
+
+- Playerの表示Widgetに、既存WEVORAEnemyの頭上`HP 現在 / 最大`と燃焼中の`燃焼中`を追加。画面外・死亡・壁越しは非表示。数字は実HealthComponent、状態はSpellReactionComponentから取得。
+- Enemyに仮炎の発光コーン6個と揺れるオレンジのライトを追加。既存Glow素材を利用、燃焼状態/生存状態に従って表示・停止。炎は当たり判定/影なし、専用サーバーでは非表示。既存Blueprintでも継承、追加素材/移行なし。
+- UE 5.8 Win64 Development Editorビルド成功。関連魔法/敵/TPS照準テスト12/12成功・テスト警告0・失敗0。既存実命中テストへ炎Mesh/Materialの読込、燃焼での表示開始/終了、衝突無効の確認を追加。`Saved/Automation/EnemyStatus/index.json`、`Saved/Logs/EnemyStatusTests.log`。実画面の頭上UI/日本語/仮炎の見た目はPIE確認待ち。
+
 ### ジェスチャーの仮トレイル
 
 - E保持中、認識と同じ反転済みLook入力をイベントで表示Widgetへ通知。画面中央から光る軌跡を描く仮トレイルを追加。Fireはオレンジ、Windは水色、白い芯＋淡い外周。尾は約0.45秒でフェードし、次の描き始めでリセット。表示用履歴は最大128点、購読は操作対象変更/Widget終了時に解除。

@@ -11,6 +11,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/PointLightComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
@@ -218,11 +219,24 @@ bool FWEVORASpellAirCombatTest::RunTest(const FString& Parameters)
 	Scene.Step(0.8f); // Real swept projectile hit; no direct ApplyDamage or hit callback.
 	TestEqual(TEXT("Fire hit subtracts damage exactly once"), Scene.Enemy->HealthComponent->Health, 75.0f);
 	TestTrue(TEXT("Fire adds Burning state"), Scene.Enemy->SpellReactionComponent->HasState(EWEVORASpellTargetState::Burning));
+	TestTrue(TEXT("Actual Fire hit enables burning light"), Scene.Enemy->BurningLight->IsVisible());
+	for (UStaticMeshComponent* Flame : Scene.Enemy->BurningFlames)
+	{
+		TestTrue(TEXT("Actual Fire hit shows flame meshes"), Flame->IsVisible());
+		TestNotNull(TEXT("Flame mesh is loaded"), Flame->GetStaticMesh().Get());
+		TestNotNull(TEXT("Flame glow material is loaded"), Flame->GetMaterial(0));
+		TestEqual(TEXT("Effect does not obstruct targeting or projectiles"), Flame->GetCollisionEnabled(), ECollisionEnabled::NoCollision);
+	}
 	TestFalse(TEXT("Hit consumes Fire projectile"), FireRef.IsValid());
 	TestFalse(TEXT("Ignore entry cleaned up on impact"), Scene.Pilot->GetCapsuleComponent()->GetMoveIgnoreActors().Contains(Fire));
 	TestEqual(TEXT("Self HP unchanged"), Scene.Pilot->HealthComponent->Health, 100.0f);
 	Scene.Step(3.2f);
 	TestTrue(TEXT("Fire periodic damage finishes after three seconds"), FMath::IsNearlyEqual(Scene.Enemy->HealthComponent->Health, 60.0f, 0.01f));
+	TestFalse(TEXT("Burn expiration hides light"), Scene.Enemy->BurningLight->IsVisible());
+	for (UStaticMeshComponent* Flame : Scene.Enemy->BurningFlames)
+	{
+		TestFalse(TEXT("Burn expiration hides all flames"), Flame->IsVisible());
+	}
 	Scene.Pilot->SpellWeavingComponent->CycleElement();
 	Scene.AimTarget(FRotator(20.0f, 35.0f, 0));
 	Scene.Weave();

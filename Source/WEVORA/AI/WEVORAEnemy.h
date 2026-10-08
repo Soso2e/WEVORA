@@ -10,6 +10,7 @@ class UFloatingPawnMovement;
 class UWEVORAHealthComponent;
 class UWEVORASpellReactionComponent;
 class AWEVORAEnemyProjectile;
+class UPointLightComponent;
 
 /** Floating ranged enemy. Direct swept steering, without a NavMesh dependency. */
 UCLASS(Blueprintable)
@@ -19,6 +20,13 @@ class WEVORA_API AWEVORAEnemy : public APawn
 public:
 	AWEVORAEnemy();
 	virtual void Tick(float DeltaSeconds) override;
+	virtual void BeginPlay() override;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
+	TObjectPtr<UPointLightComponent> BurningLight;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
+	TArray<TObjectPtr<UStaticMeshComponent>> BurningFlames;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Feedback")
+	bool bShowBurningEffect = true;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
 	TObjectPtr<USphereComponent> Collision;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
@@ -59,6 +67,7 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category="Attack")
 	void OnAttackFired();
 private:
+	void UpdateBurningVisual();
 	float NextAttackTime = 0.0f;
 	float FireTime = 0.0f;
 	bool IsValidTarget(const APawn* Candidate) const;

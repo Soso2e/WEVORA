@@ -160,7 +160,7 @@ Reaction Ruleの照合は**着弾前の状態**で一括実行するため、Rul
 結果:`Saved/Automation/SpellFoundationFinal/index.json`、ログ:`Saved/Logs/SpellFoundationFinal.log`。
 
 次は人間のPIE確認後、Sweep / AreaのDeliveryを1種類ずつ追加してShapeの違いを遊びへ反映する。
-その後、燃焼中の対象を分かりやすくする仮表示と、Wind × Burningの具体的な作用を1Ruleだけ追加する。
+燃焼中の対象の頭上HP/状態と仮炎表示は2026-10-08に追加（`AI/README.md`）。Wind × Burningの具体的な作用は今後1Ruleだけ追加する。
 正式VFX / UI、追加属性、ネットワーク同期は今回対象外。
 
 ## 魔法選択エフェクト
