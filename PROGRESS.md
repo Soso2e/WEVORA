@@ -162,3 +162,16 @@
 - Asset Registryによる参照証明ができないためVariant 591ファイルは未削除。依存するStateTreeモジュール/Plugin/IncludePath維持。Substrate・Volume/Water/RVT/Local Fog等も未使用を証明できず維持。
 - 検証: Python構文、Mac起動dry-run、LFS fsck、設定/保護Asset一致、git diffチェック。UE APIの実行互換性は未検証。16GB動作・メモリ/Shader削減数は未測定。
 - 次: UE 5.8上で参照監査、Build/全11テスト、Map/Blueprintロードと実RHI Shader検証。人間側で飛行・編み・Cast・命中HP低下と見た目を確認。詳細/再現手順/数値は `Docs/Optimization.md`。
+
+## 2026-10-11 攻撃入力の簡略化
+
+- 通常攻撃をLMB押下・解放だけで発射できるForward弾へ変更。長押しは最大2秒、チャージ率0〜1をContextへ記録し、発射時の基礎Powerに最大2倍を線形乗算。
+- 編み攻撃は「先に狙う → E保持で描く → E解放で発射」。LMBとの同時押し・描いた後の発射操作を省略。描画中の照準固定・Q属性切替・トレイル・手元エフェクトを継続。
+- 両攻撃は共通0.5秒のクールタイム。期間中の押下は予約せず無視。描画認識失敗は消費なし、認識済み発射試行（壁遮断を含む）は消費。異なる攻撃入力の割り込み、回避・降下・操作解除後の遅延解放による誤発射を防止。
+- レティクル下にチャージ量（黄、最大で緑）とクールタイム回復（灰）のゲージを追加。AttackCooldown / MaxChargeTime / MaxChargePowerMultiplierをBlueprintで調整可能。
+- 保存済みBlueprintのResolveSpellLaunchが基礎Powerを組み立てるため、チャージ倍率はその後のC++ HandleCastで適用。初回の等倍になる不具合を保存済みBlueprintを使用するテストで検出・修正。
+- UE 5.8 / Win64 Development Editorビルド成功。エンジンヘッダーの非推奨API警告あり。初回はビルドキャッシュ書き込みの権限制限に当たり、許可後に再実行。
+- Headless最終結果: WEVORA.Spell 12/12成功、全体19/21成功、テスト警告0。失敗はWEVORA.Movement.BurstAndBrakeおよびHeldHoverAndNaturalFall（Shift加速、Altホバー、自然落下等）。飛行側のコード・テストは今回変更せず、失敗の原因と変更前からの再現は未調査。
+- 新テストSimpleAttackは短押し、0.5秒の入力制限、1秒半チャージ・2秒上限・最大保持、保存済みBlueprintでの実発射Power、E単独発射、照準固定、重複入力、認識失敗と途中キャンセル後の解放を確認。
+- 結果: Saved/Automation/SimpleAttack/index.json、ログ: Saved/Logs/SimpleAttackAutomation.log。Editorの終了コードだけで全成功と判定せずJSON結果を確認。
+- PIEの実入力、ゲージの描画・操作感、Playerビルドは未確認。操作手順はSource/WEVORA/Spell/README.md、Blueprintのチャージ適用境界はDocs/BlueprintDesign.mdへ記載。

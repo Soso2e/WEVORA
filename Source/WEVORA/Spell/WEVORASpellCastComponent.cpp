@@ -75,6 +75,10 @@ void UWEVORASpellCastComponent::HandleCast(const FWEVORASpellContext& Context)
 	FWEVORASpellLaunch Launch;
 	AWEVORACharacter* Pilot = Cast<AWEVORACharacter>(Pawn);
 	if (!(Pilot ? Pilot->ResolveSpellLaunch(Context, Launch) : ResolveSpell(Context, Launch))) { return; }
+	// Apply after Blueprint resolution as saved design graphs also supply base power.
+	if (!FMath::IsFinite(Context.ChargeAlpha) || !FMath::IsFinite(MaxChargePowerMultiplier)) { return; }
+	Launch.Spell.Power *= FMath::Lerp(1.0f, FMath::Max(1.0f, MaxChargePowerMultiplier),
+		FMath::Clamp(Context.ChargeAlpha, 0.0f, 1.0f));
 	// Blueprint rules may supply custom data; reject invalid physics inputs before a sweep or spawn.
 	if (!FMath::IsFinite(Launch.Spell.Power) || Launch.Spell.Power <= 0.0f ||
 		!FMath::IsFinite(Launch.Parameters.Speed) || Launch.Parameters.Speed < 1.0f ||

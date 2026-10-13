@@ -276,12 +276,13 @@ bool FWEVORASpellSafetyTest::RunTest(const FString& Parameters)
 	Scene.Weave();
 	TestNull(TEXT("Short muzzle sweep prevents spawning through nearby wall"), Scene.Shot());
 	NearWall->Destroy();
+	Scene.Step(0.51f); // A recognized cast attempt also starts the shared cooldown; allow float tick tolerance.
 	AActor* FarWall = Scene.Wall(FVector(500, 0, 500), FVector(5, 300, 300));
 	Scene.Weave();
 	AWEVORASpellProjectile* WallShot = Scene.Shot();
 	if (!TestNotNull(TEXT("Clear muzzle spawns towards wall"), WallShot)) { return false; }
 	TWeakObjectPtr<AWEVORASpellProjectile> WallShotRef(WallShot);
-	Scene.Step(0.5f);
+	Scene.Step(0.51f);
 	TestFalse(TEXT("Swept wall impact consumes projectile"), WallShotRef.IsValid());
 	TestEqual(TEXT("Enemy behind wall takes no damage"), Scene.Enemy->HealthComponent->Health, 100.0f);
 	FarWall->Destroy();
@@ -299,6 +300,73 @@ bool FWEVORASpellSafetyTest::RunTest(const FString& Parameters)
 	TestNull(TEXT("Unpossessed character cannot attack"), Scene.Shot());
 	Scene.Pilot->RouteEndPlay(EEndPlayReason::Destroyed);
 	TestFalse(TEXT("Cast subscription removed on end play"), Scene.Pilot->SpellWeavingComponent->OnSpellCast.IsBound());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORASimpleAttackTest, "WEVORA.Spell.Combat.SimpleAttack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORASimpleAttackTest::RunTest(const FString& Parameters)
+{
+	FSpellCombatWorld Scene;
+	if (!TestNotNull(TEXT("Pilot"), Scene.Pilot) || !TestNotNull(TEXT("Enemy"), Scene.Enemy)) { return false; }
+	Scene.AimTarget(FRotator::ZeroRotator);
+	UWEVORASpellWeavingComponent* C = Scene.Pilot->SpellWeavingComponent;
+	TestEqual(TEXT("Default cooldown"), C->AttackCooldown, 0.5f);
+	TestEqual(TEXT("Default charge cap"), C->MaxChargeTime, 2.0f);
+	C->BeginAttack();
+	C->ReleaseAttack();
+	AWEVORASpellProjectile* Tap = Scene.Shot();
+	if (!TestNotNull(TEXT("Tap fires without gesture"), Tap)) { return false; }
+	TestEqual(TEXT("Tap uses forward shape"), Tap->Launch.Spell.Shape, EWEVORASpellShape::Forward);
+	TestEqual(TEXT("Tap retains base power"), Tap->Launch.Spell.Power, Scene.Pilot->SpellCastComponent->SpellPower);
+	Tap->Destroy();
+	C->BeginAttack(); C->ReleaseAttack(); C->BeginQuickShape();
+	TestEqual(TEXT("Cooldown blocks both inputs"), C->State, EWEVORAWeavingState::Idle);
+	Scene.Step(0.49f);
+	C->BeginAttack();
+	TestEqual(TEXT("Cooldown lasts at least half a second"), C->State, EWEVORAWeavingState::Idle);
+	Scene.Step(0.02f);
+	C->BeginAttack();
+	TestEqual(TEXT("Can attack after cooldown"), C->State, EWEVORAWeavingState::Weaving);
+	Scene.Step(1.0f);
+	TestTrue(TEXT("Half charge after one second"), FMath::IsNearlyEqual(C->GetChargeAlpha(), 0.5f, 0.01f));
+	C->CycleElement();
+	C->BeginQuickShape(); C->EndQuickShape();
+	TestEqual(TEXT("E does not interrupt normal charge"), C->State, EWEVORAWeavingState::Weaving);
+	Scene.Step(1.2f);
+	TestEqual(TEXT("Charge saturates at two seconds"), C->GetChargeAlpha(), 1.0f);
+	TestNull(TEXT("Full charge waits for release"), Scene.Shot());
+	C->ReleaseAttack();
+	AWEVORASpellProjectile* Charged = Scene.Shot();
+	if (!TestNotNull(TEXT("Charged attack fires on release"), Charged)) { return false; }
+	TestEqual(TEXT("Charge snapshot caps duration"), C->LastCastContext.ChargeDuration, 2.0f);
+	TestEqual(TEXT("Selection while charging persists"), Charged->Launch.Spell.Element, EWEVORASpellElement::Wind);
+	TestEqual(TEXT("Full charge doubles reaction power"), Charged->Launch.Spell.Power,
+		Scene.Pilot->SpellCastComponent->SpellPower * 2.0f);
+	Charged->Destroy();
+	Scene.Step(0.51f);
+	C->BeginQuickShape();
+	TestEqual(TEXT("E alone begins drawing"), C->State, EWEVORAWeavingState::Shaping);
+	C->BeginAttack(); C->ReleaseAttack();
+	TestEqual(TEXT("LMB does not interrupt E drawing"), C->State, EWEVORAWeavingState::Shaping);
+	const FRotator Before = Scene.Controller->GetControlRotation();
+	Scene.Pilot->DoLook(15.0f, 0.0f);
+	TestTrue(TEXT("Drawing preserves aim"), Before.Equals(Scene.Controller->GetControlRotation()));
+	C->EndQuickShape();
+	TestEqual(TEXT("E release casts and resets"), C->State, EWEVORAWeavingState::Idle);
+	TestEqual(TEXT("Drawn gesture preserved"), C->LastCastContext.Gesture, EWEVORAGesture::Sweep);
+	AWEVORASpellProjectile* Woven = Scene.Shot();
+	if (!TestNotNull(TEXT("E release needs no left click"), Woven)) { return false; }
+	Woven->Destroy();
+	Scene.Step(0.51f);
+	C->BeginQuickShape(); C->EndQuickShape();
+	TestNull(TEXT("Empty drawing cancels"), Scene.Shot());
+	TestEqual(TEXT("Invalid drawing consumes no cooldown"), C->GetCooldownRemaining(), 0.0f);
+	C->BeginAttack(); C->CancelWeave(); C->ReleaseAttack();
+	TestNull(TEXT("Canceled charge release cannot fire"), Scene.Shot());
+	C->BeginQuickShape(); C->RecordLook(FVector2D(15, 0));
+	C->CancelWeave(); C->EndQuickShape();
+	TestNull(TEXT("Canceled drawing release cannot fire"), Scene.Shot());
 	return true;
 }
 

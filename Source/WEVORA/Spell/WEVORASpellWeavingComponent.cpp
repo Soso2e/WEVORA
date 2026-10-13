@@ -27,9 +27,56 @@ void UWEVORASpellWeavingComponent::SetState(EWEVORAWeavingState NewState)
 
 void UWEVORASpellWeavingComponent::BeginWeave()
 {
-	if (State != EWEVORAWeavingState::Idle) { return; }
+	if (State != EWEVORAWeavingState::Idle || GetCooldownRemaining() > 0.0f) { return; }
 	ClearGesture();
 	SetState(EWEVORAWeavingState::Weaving);
+}
+
+float UWEVORASpellWeavingComponent::GetCooldownRemaining() const
+{
+	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+	return float(FMath::Max(0.0, NextAttackTime - Now));
+}
+
+float UWEVORASpellWeavingComponent::GetChargeAlpha() const
+{
+	if (!bAttackHeld) { return 0.0f; }
+	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+	return FMath::Clamp(float(Now - AttackStartTime) / FMath::Max(0.01f, MaxChargeTime), 0.0f, 1.0f);
+}
+
+void UWEVORASpellWeavingComponent::BeginAttack()
+{
+	if (State != EWEVORAWeavingState::Idle || GetCooldownRemaining() > 0.0f) { return; }
+	AttackStartTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+	bAttackHeld = true;
+	BeginWeave();
+}
+
+void UWEVORASpellWeavingComponent::ReleaseAttack()
+{
+	if (!bAttackHeld) { return; }
+	if (State != EWEVORAWeavingState::Weaving) { CancelWeave(); return; }
+	Context.Gesture = EWEVORAGesture::Thrust;
+	Context.ChargeAlpha = GetChargeAlpha();
+	Context.ChargeDuration = Context.ChargeAlpha * FMath::Max(0.01f, MaxChargeTime);
+	SetState(EWEVORAWeavingState::ReadyToCast);
+	ReleaseWeave();
+}
+
+void UWEVORASpellWeavingComponent::BeginQuickShape()
+{
+	if (State != EWEVORAWeavingState::Idle || GetCooldownRemaining() > 0.0f) { return; }
+	bQuickShapeHeld = true;
+	BeginWeave();
+	BeginShape();
+}
+
+void UWEVORASpellWeavingComponent::EndQuickShape()
+{
+	if (!bQuickShapeHeld) { return; }
+	EndShape();
+	ReleaseWeave();
 }
 
 void UWEVORASpellWeavingComponent::CycleElement()
@@ -71,7 +118,7 @@ void UWEVORASpellWeavingComponent::EndShape()
 
 void UWEVORASpellWeavingComponent::ReleaseWeave()
 {
-	if (State != EWEVORAWeavingState::ReadyToCast || Context.Gesture == EWEVORAGesture::None)
+	if (State != EWEVORAWeavingState::ReadyToCast || Context.Gesture == EWEVORAGesture::None || GetCooldownRemaining() > 0.0f)
 	{
 		CancelWeave();
 		return;
@@ -79,6 +126,8 @@ void UWEVORASpellWeavingComponent::ReleaseWeave()
 	const FWEVORASpellContext CastContext = Context;
 	LastCastContext = CastContext;
 	bHasLastCast = true;
+	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+	NextAttackTime = Now + FMath::Max(0.0f, AttackCooldown);
 	// Reset before broadcasting so Blueprint callbacks can safely begin a new weave.
 	CancelWeave();
 	if (bLogEvents)
@@ -93,6 +142,8 @@ void UWEVORASpellWeavingComponent::ReleaseWeave()
 void UWEVORASpellWeavingComponent::CancelWeave()
 {
 	const bool bWasIdle = State == EWEVORAWeavingState::Idle;
+	bAttackHeld = false;
+	bQuickShapeHeld = false;
 	ClearGesture();
 	SetState(EWEVORAWeavingState::Idle);
 	// Explicit cancellation also stops an idle selection preview.

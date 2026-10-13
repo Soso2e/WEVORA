@@ -141,11 +141,11 @@ void AWEVORACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	PlayerInputComponent->BindKey(EKeys::RightMouseButton, IE_Released, this, &AWEVORACharacter::EndPrecisionAim);
 	PlayerInputComponent->BindKey(EKeys::Y, IE_Pressed, this, &AWEVORACharacter::DoRecenterView).bConsumeInput = false;
 	// Asset-free fallback; Blueprint/Enhanced Input may also call the component API.
-	PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, SpellWeavingComponent, &UWEVORASpellWeavingComponent::BeginWeave).bConsumeInput = false;
-	PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Released, SpellWeavingComponent, &UWEVORASpellWeavingComponent::ReleaseWeave).bConsumeInput = false;
+	PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, SpellWeavingComponent, &UWEVORASpellWeavingComponent::BeginAttack).bConsumeInput = false;
+	PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Released, SpellWeavingComponent, &UWEVORASpellWeavingComponent::ReleaseAttack).bConsumeInput = false;
 	PlayerInputComponent->BindKey(EKeys::Q, IE_Pressed, SpellWeavingComponent, &UWEVORASpellWeavingComponent::CycleElement).bConsumeInput = false;
-	PlayerInputComponent->BindKey(EKeys::E, IE_Pressed, SpellWeavingComponent, &UWEVORASpellWeavingComponent::BeginShape).bConsumeInput = false;
-	PlayerInputComponent->BindKey(EKeys::E, IE_Released, SpellWeavingComponent, &UWEVORASpellWeavingComponent::EndShape).bConsumeInput = false;
+	PlayerInputComponent->BindKey(EKeys::E, IE_Pressed, SpellWeavingComponent, &UWEVORASpellWeavingComponent::BeginQuickShape).bConsumeInput = false;
+	PlayerInputComponent->BindKey(EKeys::E, IE_Released, SpellWeavingComponent, &UWEVORASpellWeavingComponent::EndQuickShape).bConsumeInput = false;
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
 		// Tap jumps; a held input takes over as paid ascent after a short delay.

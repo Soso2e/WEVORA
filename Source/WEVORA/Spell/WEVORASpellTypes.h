@@ -67,6 +67,11 @@ struct WEVORA_API FWEVORASpellContext
 	float GestureMagnitude = 0.0f;
 	UPROPERTY(BlueprintReadOnly, Category="Spell")
 	float GestureDuration = 0.0f;
+	/** Normal attack charge, independent of gesture recording duration. */
+	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	float ChargeDuration = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	float ChargeAlpha = 0.0f;
 };
 
 /** Resolved runtime behaviour, separate from gesture recognition and named spells. */

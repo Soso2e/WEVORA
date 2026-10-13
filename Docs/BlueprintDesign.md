@@ -31,6 +31,9 @@ Blueprintに親関数を追加すると、親の既定処理を利用する形�
 AreaなどのEnumを選ぶだけでは配送実装は作成されない。
 Aim方向と発射前の水平速度継承は、その後C++が実際のカメラ・プレイヤーから確定する。
 Power / Speed / Radius / Lifetimeが無効な発射データはC++が拒否する。
+通常攻撃のチャージ倍率は、`ResolveSpellLaunch`が返した基礎Powerに対して
+C++の`HandleCast`で乗算します。保存済みBlueprintでも最大2秒のチャージが反映されます。
+このグラフでチャージ倍率を重ねて掛けないでください。`Context.ChargeAlpha`は0〜1です。
 
 ## 数値・素材だけを変更する場所
 
@@ -43,6 +46,8 @@ Power / Speed / Radius / Lifetimeが無効な発射データはC++が拒否す�
 | 属性別速度・半径・寿命・色 | `SpellCastComponent / Element Parameters` |
 | Gesture別の形・Delivery・速度/半径倍率 | `SpellCastComponent / Shape Profiles` |
 | 魔法のPower、水平速度継承率、反動量 | `SpellCastComponent` |
+| 最大チャージ時の威力倍率（初期2倍） | `SpellCastComponent / Attack / Max Charge Power Multiplier` |
+| 攻撃クールタイム（初期0.5秒）、最大チャージ（初期2秒） | `SpellWeavingComponent / Attack` |
 | 体の属性切替演出、右手の継続演出、色、取り付け | `SpellSelectionEffectComponent` |
 | Fireダメージ/燃焼、Wind押し出し/持ち上げ | 敵等の`SpellReactionComponent / Reaction Rules` |
 | 魔法UI・選択時/編み中の追加演出 | `SpellWeavingComponent.OnSpellPresentationChanged` |

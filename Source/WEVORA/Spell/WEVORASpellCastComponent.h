@@ -36,6 +36,9 @@ public:
 	float AimDistance = 10000.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="0"))
 	float SpellPower = 1.0f;
+	/** Full normal-attack charge scales Fire damage/burning and Wind impulse. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Attack", meta=(ClampMin="1"))
+	float MaxChargePowerMultiplier = 2.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
 	TMap<EWEVORAGesture, FWEVORASpellShapeProfile> ShapeProfiles;
 	/** Non-projectile deliveries require an explicit implementation. No silent fallback. */

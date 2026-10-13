@@ -139,6 +139,22 @@ int32 UWEVORAReticleWidget::NativePaint(const FPaintArgs& Args, const FGeometry&
 	const AWEVORACharacter* Pilot = Cast<AWEVORACharacter>(GetOwningPlayerPawn());
 	if (!Pilot || !Pilot->SpellCastComponent || !Pilot->SpellWeavingComponent) { return Layer; }
 	const FVector2D Center = Geometry.GetLocalSize() * 0.5f;
+	const float Charge = Pilot->SpellWeavingComponent->GetChargeAlpha();
+	const float Cooldown = Pilot->SpellWeavingComponent->GetCooldownRemaining();
+	if (Charge > 0.0f || Cooldown > 0.0f)
+	{
+		const float Fill = Cooldown > 0.0f
+			? 1.0f - FMath::Clamp(Cooldown / FMath::Max(0.01f, Pilot->SpellWeavingComponent->AttackCooldown), 0.0f, 1.0f)
+			: Charge;
+		const FLinearColor Tint = Cooldown > 0.0f ? FLinearColor(0.5f, 0.5f, 0.5f)
+			: Charge >= 1.0f ? FLinearColor(0.2f, 1.0f, 0.5f) : FLinearColor(1.0f, 0.7f, 0.1f);
+		TArray<FVector2D> Background{Center + FVector2D(-30, 26), Center + FVector2D(30, 26)};
+		TArray<FVector2D> Progress{Background[0], Center + FVector2D(-30 + 60 * Fill, 26)};
+		FSlateDrawElement::MakeLines(Elements, Layer, Geometry.ToPaintGeometry(), Background,
+			ESlateDrawEffect::None, FLinearColor::Black, true, 5.0f);
+		FSlateDrawElement::MakeLines(Elements, Layer + 1, Geometry.ToPaintGeometry(), Progress,
+			ESlateDrawEffect::None, Tint, true, 3.0f);
+	}
 	if (bShowGestureTrail)
 	{
 		const FLinearColor Tint = TrailElement == EWEVORASpellElement::Fire
