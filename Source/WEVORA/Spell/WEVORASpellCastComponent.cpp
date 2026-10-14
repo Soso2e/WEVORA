@@ -19,6 +19,10 @@ UWEVORASpellCastComponent::UWEVORASpellCastComponent()
 	Wind.Speed = 2600.0f;
 	Wind.Color = FLinearColor(0.1f, 0.8f, 1.0f);
 	ElementParameters.Add(EWEVORASpellElement::Wind, Wind);
+	FWEVORASpellProjectileParameters Lightning;
+	Lightning.Speed = 3200.0f;
+	Lightning.Color = FLinearColor(0.65f, 0.3f, 1.0f);
+	ElementParameters.Add(EWEVORASpellElement::Lightning, Lightning);
 	FWEVORASpellShapeProfile Forward;
 	Forward.SpeedMultiplier = 1.2f;
 	ShapeProfiles.Add(EWEVORAGesture::Thrust, Forward);

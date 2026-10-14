@@ -27,7 +27,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Recognition")
 	bool bInvertLookY = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
-	TArray<EWEVORASpellElement> AvailableElements = { EWEVORASpellElement::Fire, EWEVORASpellElement::Wind };
+	TArray<EWEVORASpellElement> AvailableElements = { EWEVORASpellElement::Fire, EWEVORASpellElement::Wind, EWEVORASpellElement::Lightning };
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Debug")
 	bool bShowDebug = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Debug")

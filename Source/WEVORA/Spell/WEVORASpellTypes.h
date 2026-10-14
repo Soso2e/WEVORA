@@ -4,7 +4,7 @@
 #include "WEVORASpellTypes.generated.h"
 
 UENUM(BlueprintType)
-enum class EWEVORASpellElement : uint8 { Fire, Wind };
+enum class EWEVORASpellElement : uint8 { Fire, Wind, Lightning };
 
 UENUM(BlueprintType)
 enum class EWEVORAGesture : uint8 { None, Thrust, Sweep, Circle, Slam };

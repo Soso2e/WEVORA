@@ -1,4 +1,5 @@
 #include "AI/WEVORAEnemy.h"
+#include "Engine/StaticMesh.h"
 #include "AI/WEVORAEnemyProjectile.h"
 #include "AI/WEVORAHealthComponent.h"
 #include "Spell/WEVORASpellReactionComponent.h"

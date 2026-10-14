@@ -18,6 +18,9 @@ UWEVORASpellSelectionEffectComponent::UWEVORASpellSelectionEffectComponent()
 	FWEVORASpellSelectionEffect Wind;
 	Wind.Color = FLinearColor(0.1f, 0.8f, 1.0f);
 	ElementEffects.Add(EWEVORASpellElement::Wind, Wind);
+	FWEVORASpellSelectionEffect Lightning;
+	Lightning.Color = FLinearColor(0.65f, 0.3f, 1.0f);
+	ElementEffects.Add(EWEVORASpellElement::Lightning, Lightning);
 }
 
 void UWEVORASpellSelectionEffectComponent::BeginPlay()

@@ -2,6 +2,7 @@
 #include "AI/WEVORAHealthComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/DamageType.h"
 #include "GameFramework/PawnMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "WEVORA.h"
@@ -29,6 +30,10 @@ UWEVORASpellReactionComponent::UWEVORASpellReactionComponent()
 	Lift.Magnitude = 220.0f;
 	Wind.Effects.Add(Lift);
 	ReactionRules.Add(Wind);
+	FWEVORASpellReactionRule Lightning;
+	Lightning.Element = EWEVORASpellElement::Lightning;
+	Lightning.Effects.Add(Damage);
+	ReactionRules.Add(Lightning);
 }
 
 bool UWEVORASpellReactionComponent::HasState(EWEVORASpellTargetState State) const

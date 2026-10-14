@@ -230,3 +230,5 @@ Niagara素材設定後はUser Parameterの反映と、繰り返し操作で表�
   `AI/WEVORAEnemy.h/.cpp`、`Tests/WEVORASpellCombatTests.cpp`（すべて`Source/WEVORA`内）。
 - 文書: `Source/WEVORA/Spell/README.md`、`Source/WEVORA/AI/README.md`、`PROGRESS.md`。
 - Map / Blueprintのアセットは変更せず、既存保存済みアセットへのネイティブComponent継承を検証。
+
+攻撃の炎・風・雷エフェクトと命中時の破片の調整方法は [Docs/AttackEffects.md](../../../Docs/AttackEffects.md) を参照。

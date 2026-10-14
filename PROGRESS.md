@@ -175,3 +175,13 @@
 - 新テストSimpleAttackは短押し、0.5秒の入力制限、1秒半チャージ・2秒上限・最大保持、保存済みBlueprintでの実発射Power、E単独発射、照準固定、重複入力、認識失敗と途中キャンセル後の解放を確認。
 - 結果: Saved/Automation/SimpleAttack/index.json、ログ: Saved/Logs/SimpleAttackAutomation.log。Editorの終了コードだけで全成功と判定せずJSON結果を確認。
 - PIEの実入力、ゲージの描画・操作感、Playerビルドは未確認。操作手順はSource/WEVORA/Spell/README.md、Blueprintのチャージ適用境界はDocs/BlueprintDesign.mdへ記載。
+
+## 2026-10-14 攻撃・命中エフェクト
+
+- 炎・風・雷を属性別のインスタンスメッシュアニメーションとして実装し、通常/編み攻撃の弾へ接続。色・マテリアル・大きさ・アニメーション速度を編集可能。任意のNiagaraへの置き換えにも対応。
+- 命中対象の衝突面マテリアルを優先し、当たり判定用の球に当たった場合は表示メッシュから取得。動的マテリアルも引き継ぐ破片を生成し、弾消滅後も独立して飛散・縮小・自動消去。衝突なし、最大64個/5秒。
+- 共通発光マテリアルM_AttackEffectと調整用BP_WEVORASpellProjectileを作成。保存済みプレイヤーBlueprintに雷の選択・発射設定を追加。再実行用Scripts/create_attack_effects.pyとDocs/AttackEffects.mdを追加。
+- 雷の標準反応は単発ダメージ。既存の炎・風の反応は保持。
+- UE 5.8 Win64 Development Editorビルド成功。共通PCHの読み込み停止を回避するため-NoPCH/-NoSharedPCHで実施し、既存の敵コードにも必要な型の明示includeを追加。エンジンヘッダーの非推奨API警告あり。
+- HeadlessテストWEVORA.Spell. 13/13成功。新規AttackEffectsテストで三属性の保存済みBlueprint解決、描画メッシュ生成、対象マテリアル取得、弾消滅後の破片の保持・飛散・寿命・衝突無効を確認。結果Saved/Automation/AttackEffects/index.json。
+- 実描画/PIEの見た目、ネットワーク配信、Playerビルドは未確認。

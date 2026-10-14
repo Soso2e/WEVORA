@@ -5,6 +5,12 @@
 #include "Spell/WEVORASpellWeavingComponent.h"
 #include "Spell/WEVORASpellProjectile.h"
 #include "Spell/WEVORASpellReactionComponent.h"
+#include "Spell/WEVORASpellEffectComponent.h"
+#include "Spell/WEVORAImpactEffect.h"
+#include "Components/InstancedStaticMeshComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/Material.h"
+#include "MaterialDomain.h"
 #include "AI/WEVORAEnemy.h"
 #include "AI/WEVORAHealthComponent.h"
 #include "Components/BoxComponent.h"
@@ -122,6 +128,57 @@ struct FSpellCombatWorld
 		return Actor;
 	}
 };
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORAAttackEffectsTest, "WEVORA.Spell.Combat.AttackEffects",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORAAttackEffectsTest::RunTest(const FString& Parameters)
+{
+	FSpellCombatWorld Scene;
+	if (!TestNotNull(TEXT("Pilot"), Scene.Pilot) || !TestNotNull(TEXT("Enemy"), Scene.Enemy)) { return false; }
+	TestTrue(TEXT("Saved pilot allows Lightning selection"), Scene.Pilot->SpellWeavingComponent->AvailableElements.Contains(EWEVORASpellElement::Lightning));
+	UMaterialInstanceDynamic* Surface = UMaterialInstanceDynamic::Create(UMaterial::GetDefaultMaterial(MD_Surface), Scene.Enemy);
+	Scene.Enemy->Body->SetMaterial(0, Surface);
+	FHitResult Hit(Scene.Enemy, Scene.Enemy->Collision, Scene.Enemy->Body->GetComponentLocation(), FVector::UpVector);
+	TestTrue(TEXT("Proxy collision resolves visible object's actual material instance"), UWEVORASpellEffectComponent::ResolveHitMaterial(Hit) == Surface);
+	for (const EWEVORASpellElement Element : {EWEVORASpellElement::Fire, EWEVORASpellElement::Wind, EWEVORASpellElement::Lightning})
+	{
+		FWEVORASpellContext Context;
+		Context.Element = Element;
+		Context.Gesture = EWEVORAGesture::Thrust;
+		FWEVORASpellLaunch Launch;
+		if (!TestTrue(TEXT("Saved Blueprint resolves all three effects"), Scene.Pilot->ResolveSpellLaunch(Context, Launch))) { return false; }
+		Launch.Direction = FVector::ForwardVector;
+		const FTransform Transform(FVector(0, 3000, 500));
+		AWEVORASpellProjectile* Shot = Scene.World->SpawnActorDeferred<AWEVORASpellProjectile>(AWEVORASpellProjectile::StaticClass(), Transform);
+		Shot->InitializeSpell(Launch);
+		Shot->FinishSpawning(Transform);
+		TArray<UInstancedStaticMeshComponent*> Meshes;
+		Shot->GetComponents(Meshes);
+		TestEqual(TEXT("One batched animated mesh per attack"), Meshes.Num(), 1);
+		if (Meshes.Num()) { TestTrue(TEXT("Animated attack geometry exists"), Meshes[0]->GetInstanceCount() > 0); }
+		Shot->AttackEffect->SpawnImpact(Hit);
+		Shot->Destroy();
+	}
+	int32 Count = 0;
+	for (TActorIterator<AWEVORAImpactEffect> It(Scene.World); It; ++It)
+	{
+		++Count;
+		TestTrue(TEXT("Fragments retain hit material after projectile destruction"), It->Fragments->GetMaterial(0) == Surface);
+		TestEqual(TEXT("Configured fragment count"), It->Fragments->GetInstanceCount(), 12);
+		TestEqual(TEXT("Cosmetics cannot block attacks"), It->Fragments->GetCollisionEnabled(), ECollisionEnabled::NoCollision);
+	}
+	TestEqual(TEXT("Every attribute creates an independent impact"), Count, 3);
+	Scene.Step(0.1f);
+	for (TActorIterator<AWEVORAImpactEffect> It(Scene.World); It; ++It)
+	{
+		FTransform First;
+		It->Fragments->GetInstanceTransform(0, First);
+		TestTrue(TEXT("Fragments fly outward"), First.GetLocation().Size() > 1);
+	}
+	Scene.Step(1.0f);
+	TestFalse(TEXT("Impact actors expire automatically"), bool(TActorIterator<AWEVORAImpactEffect>(Scene.World)));
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORATPSAimTest, "WEVORA.Spell.Combat.TPSAim",
