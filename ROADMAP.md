@@ -115,3 +115,6 @@
 - Steamworks接続日、価格、発売日、2v2の発売時実装有無
 
 [CONCEPT.md](CONCEPT.md) / [GAME_DESIGN.md](GAME_DESIGN.md) / [PROGRESS.md](PROGRESS.md) を参照。
+
+進捗管理（Notion）：[WEVORA｜開発ダッシュボード](https://app.notion.com/p/3fbd7670ba178160b183ed58af5a5cd4)。このリンクは参照であり、自動双方向同期ではない。
+
