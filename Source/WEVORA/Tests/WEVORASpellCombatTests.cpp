@@ -427,6 +427,39 @@ bool FWEVORASimpleAttackTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORALightningHitTest, "WEVORA.Spell.Combat.LightningHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORALightningHitTest::RunTest(const FString& Parameters)
+{
+	for (const float ChargeTime : {0.0f, 2.1f})
+	{
+		FSpellCombatWorld Scene;
+		if (!TestNotNull(TEXT("Saved pilot"), Scene.Pilot) || !TestNotNull(TEXT("Saved enemy"), Scene.Enemy)) { return false; }
+		Scene.AimTarget(FRotator::ZeroRotator);
+		auto* Weaving = Scene.Pilot->SpellWeavingComponent;
+		Weaving->CycleElement(); Weaving->CycleElement();
+		TestEqual(TEXT("Q cycle reaches Lightning"), Weaving->Context.Element, EWEVORASpellElement::Lightning);
+		Weaving->BeginAttack();
+		Scene.Step(ChargeTime);
+		Weaving->ReleaseAttack();
+		AWEVORASpellProjectile* Shot = Scene.Shot();
+		if (!TestNotNull(TEXT("Lightning attack spawns"), Shot)) { return false; }
+		TestEqual(TEXT("Saved effect Blueprint is used by actual cast"), Shot->GetClass()->GetPathName(),
+			FString(TEXT("/Game/WEVORA/Effects/BP_WEVORASpellProjectile.BP_WEVORASpellProjectile_C")));
+		TestEqual(TEXT("Lightning snapshot"), Shot->Launch.Spell.Element, EWEVORASpellElement::Lightning);
+		const FVector BeforeHit = Scene.Enemy->GetActorLocation();
+		Scene.Step(0.8f);
+		const float ExpectedHealth = ChargeTime > 0.0f ? 50.0f : 75.0f;
+		TestEqual(TEXT("Swept Lightning hit deals one scaled damage event"), Scene.Enemy->HealthComponent->Health, ExpectedHealth);
+		TestFalse(TEXT("Lightning does not apply Burning"), Scene.Enemy->SpellReactionComponent->HasState(EWEVORASpellTargetState::Burning));
+		TestFalse(TEXT("Lightning does not apply Wind displacement"), Scene.Enemy->SpellReactionComponent->IsDisplaced());
+		Scene.Step(3.2f);
+		TestEqual(TEXT("Lightning has no periodic damage"), Scene.Enemy->HealthComponent->Health, ExpectedHealth);
+		TestTrue(TEXT("Lightning leaves target position unchanged"), Scene.Enemy->GetActorLocation().Equals(BeforeHit, 0.01f));
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORAReactionRuleTest, "WEVORA.Spell.Combat.ReactionRulesAndStates",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWEVORAReactionRuleTest::RunTest(const FString& Parameters)

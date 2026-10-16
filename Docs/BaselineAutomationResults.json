@@ -1,0 +1,151 @@
+{
+  "date": "2026-10-17",
+  "engine": "5.8.3-58210709",
+  "platform": "Win64 Development Editor",
+  "mode": "NullRHI; public controls and real world ticks, no physical input",
+  "baseCommit": "1b5844c081f6d06f1c910362e54e422e2a7a18ee",
+  "investigatedWorkCommit": "e758fb8e17a278a426400a540b0e488ea08c73c0",
+  "succeeded": 23,
+  "failed": 0,
+  "notRun": 0,
+  "tests": [
+    {
+      "fullTestPath": "WEVORA.AI.TargetAndAttack",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Design.BlueprintRules",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Movement.AirJumpMana",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Movement.BurstAndBrake",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Movement.HeldHoverAndNaturalFall",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Movement.JumpAndFall",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Movement.ManaRecovery",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Movement.PartialBurstMana",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Movement.PowerAndPriority",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.AirborneCastToDamage",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.AttackEffects",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.CancelWallsAndLifetime",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.DataResolution",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.DisplacementWallsAndAI",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.LightningHit",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.ReactionRulesAndStates",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.SimpleAttack",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.TPSAim",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.TPSCoverPreview",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Gestures",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.HandAttachment",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.SelectionEffects",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.StateFlow",
+      "state": "Success",
+      "warnings": 0,
+      "errors": 0
+    }
+  ]
+}

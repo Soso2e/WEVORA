@@ -9,9 +9,18 @@
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "UObject/UnrealType.h"
 
 namespace
 {
+// Read the loaded Blueprint's tuning without widening the character's gameplay API.
+float FlightSetting(const AWEVORACharacter* Pilot, FName Name)
+{
+	const FFloatProperty* Property = FindFProperty<FFloatProperty>(Pilot->GetClass(), Name);
+	check(Property);
+	return Property->GetPropertyValue_InContainer(Pilot);
+}
+
 /** Saved project Blueprint, real tick ordering, swept movement and a physical landing surface. */
 struct FFlightWorld
 {
@@ -168,23 +177,37 @@ bool FWEVORABurstTest::RunTest(const FString& Parameters)
 	if (!TestNotNull(TEXT("Pilot"), Scene.Pilot)) { return false; }
 	AWEVORACharacter* Pilot = Scene.Pilot;
 	UCharacterMovementComponent* Movement = Pilot->GetCharacterMovement();
-	Scene.PutInAir();
+	// Steering now falls naturally. Leave room to catch the fall before the floor.
+	Scene.PutInAir(10000.0f);
 	Pilot->DoMove(0.0f, 1.0f);
 	Scene.Step(2.4f);
 	const float PreBurstMana = Pilot->ManaComponent->Mana;
+	const double PreBurstSpeed = Movement->Velocity.Size2D();
+	const float CruiseSpeed = FlightSetting(Pilot, TEXT("CruiseSpeed"));
+	const float BurstImpulse = FlightSetting(Pilot, TEXT("BurstImpulse"));
+	const float BurstCap = FlightSetting(Pilot, TEXT("BurstMaxSpeed"));
+	const float BurstDecay = FlightSetting(Pilot, TEXT("BurstSpeedDecay"));
+	TestTrue(TEXT("Burst scenario remains airborne"), Movement->IsFalling());
 	Pilot->DoBurst();
-	TestTrue(TEXT("Stronger burst adds substantial speed"), Movement->Velocity.Size2D() > 2900.0f);
+	const double ExpectedBurstSpeed = FMath::Min(PreBurstSpeed + BurstImpulse, double(BurstCap));
+	TestTrue(TEXT("Burst adds the saved Blueprint impulse up to its cap"),
+		FMath::IsNearlyEqual(Movement->Velocity.Size2D(), ExpectedBurstSpeed, 0.1));
+	TestTrue(TEXT("Burst exceeds cruise speed"), Movement->Velocity.Size2D() > CruiseSpeed);
 	TestTrue(TEXT("Burst spends one mana cost"), FMath::IsNearlyEqual(PreBurstMana - Pilot->ManaComponent->Mana, 12.0f, 0.01f));
 	const float BurstMana = Pilot->ManaComponent->Mana;
 	Pilot->DoBurst();
 	TestEqual(TEXT("Cooldown blocks both burst and repeat cost"), Pilot->ManaComponent->Mana, BurstMana);
 	Scene.Step(1.0f / 60.0f);
-	TestTrue(TEXT("Next movement tick does not clamp boost to cruise"), Movement->Velocity.Size2D() > 2800.0f);
+	TestTrue(TEXT("Next movement tick retains boost above cruise within configured decay"),
+		Movement->Velocity.Size2D() > CruiseSpeed &&
+		Movement->Velocity.Size2D() >= ExpectedBurstSpeed - BurstDecay / 60.0 - 1.0);
 	Scene.Step(0.5f);
 	Pilot->DoBurst();
-	TestTrue(TEXT("Repeated boost respects speed cap"), Movement->Velocity.Size2D() <= 3200.1f);
+	TestTrue(TEXT("Repeated boost respects speed cap"), Movement->Velocity.Size2D() <= BurstCap + 0.1f);
 	Pilot->DoBrakeStart();
-	Scene.Step(1.0f);
+	// Catching the accumulated fall is acceleration-limited, not an instant velocity reset.
+	Scene.Step(3.0f);
+	TestTrue(TEXT("Brake scenario remains airborne instead of resting on floor"), Movement->IsFalling());
 	TestTrue(TEXT("Alt brakes even while steering is held"), Movement->Velocity.Size2D() < 50.0f);
 	TestEqual(TEXT("Alt enables stationary paid hover"), Pilot->FlightState, EWEVORAFlightState::Hovering);
 	TestTrue(TEXT("Stationary hover supports altitude"), FMath::Abs(Movement->Velocity.Z) < 1.0f);
@@ -220,8 +243,13 @@ bool FWEVORAHeldHoverTest::RunTest(const FString& Parameters)
 		Scene.PutInAir();
 		Pilot->DoMove(0.0f, 1.0f);
 		Scene.Step(0.5f, Delta);
-		TestTrue(TEXT("Steering falls at approximately 80 percent from rest"),
-			FMath::IsNearlyEqual(Movement->Velocity.Z / NaturalFallSpeed, 0.8, 0.02));
+		const float SteeringFallMultiplier = FlightSetting(Pilot, TEXT("SteeringFallMultiplier"));
+		AddInfo(FString::Printf(TEXT("%.0f fps: natural=%.2f steered=%.2f saved multiplier=%.3f"),
+			1.0f / Delta, NaturalFallSpeed, Movement->Velocity.Z, SteeringFallMultiplier));
+		TestTrue(TEXT("Saved steering tuning reduces gravity without removing it"),
+			SteeringFallMultiplier > 0.0f && SteeringFallMultiplier < 1.0f);
+		TestTrue(TEXT("Steering fall follows the saved Blueprint multiplier from rest"),
+			FMath::IsNearlyEqual(Movement->Velocity.Z / NaturalFallSpeed, double(SteeringFallMultiplier), 0.02));
 		TestEqual(TEXT("Steering alone never hovers"), Pilot->FlightState, EWEVORAFlightState::Falling);
 		TestEqual(TEXT("Steering fall spends no mana"), Pilot->ManaComponent->Mana, 100.0f);
 		Pilot->DoJumpStart();
@@ -233,13 +261,18 @@ bool FWEVORAHeldHoverTest::RunTest(const FString& Parameters)
 		Pilot->DoJumpEnd();
 		TestTrue(TEXT("Air acceleration builds speed gradually"), Movement->Velocity.Size2D() > 200.0f && Movement->Velocity.Size2D() < 350.0f);
 		Pilot->DoMove(0.0f, 0.0f);
+		const double BeforeBurstSpeed = Movement->Velocity.Size2D();
 		Pilot->DoBurstStart();
 		const double BurstSpeed = Movement->Velocity.Size2D();
 		const float BurstMana = Pilot->ManaComponent->Mana;
-		TestTrue(TEXT("Shift press still dashes immediately"), BurstSpeed > 2000.0f);
+		TestTrue(TEXT("Shift press adds the configured dash impulse immediately"), FMath::IsNearlyEqual(BurstSpeed,
+			FMath::Min(BeforeBurstSpeed + FlightSetting(Pilot, TEXT("BurstImpulse")),
+				double(FlightSetting(Pilot, TEXT("BurstMaxSpeed")))), 0.1));
 		Scene.Step(0.6f, Delta);
 		TestEqual(TEXT("Shift hold hovers without steering"), Pilot->FlightState, EWEVORAFlightState::Hovering);
-		TestTrue(TEXT("Shift hover keeps substantial dash inertia"), Movement->Velocity.Size2D() > 1500.0f);
+		TestTrue(TEXT("Shift hover retains dash inertia within configured decay"),
+			Movement->Velocity.Size2D() >= BurstSpeed - 0.6 *
+				(FlightSetting(Pilot, TEXT("BurstSpeedDecay")) + FlightSetting(Pilot, TEXT("GlideBrakingDeceleration"))) - 1.0);
 		TestTrue(TEXT("Shift hold pays hover rate without repeated dash cost"), FMath::IsNearlyEqual(BurstMana - Pilot->ManaComponent->Mana, 4.8f, 0.05f));
 		const double HeldSpeed = Movement->Velocity.Size2D();
 		const float HeldMana = Pilot->ManaComponent->Mana;

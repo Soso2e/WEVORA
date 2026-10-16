@@ -1,8 +1,60 @@
 # WEVORA Progress
 
-最終更新: 2026-10-08
+最終更新: 2026-10-17
 
-現在フェーズ: Fire / Windの汎用魔法基盤（Playerの攻撃操作はユーザー確認済み、命中・属性効果・操作感の詳細確認は継続）
+現在フェーズ: workの統合前ベースライン検証（自動検証完了、PIE/Playerの実入力・見た目は人間の確認待ち）
+
+## 2026-10-17 PR #7: work → main 安定化
+
+対象PR: https://github.com/Soso2e/WEVORA/pull/7 （既存Draftを継続）。
+調査開始時は`main=1b5844c`、`work=e758fb8`、17 commits ahead / 0 behind、43ファイル差分。
+ローカルworkをfast-forwardして調査。mainへの直接コミット、マージ、force push、ブランチ削除は行わない。
+
+### 調査・修正
+
+- 既知の移動失敗は、保存済みBlueprint調整値との期待値不一致とテストの着地によるもの。
+  Blueprintの巡航1000 / ダッシュ加算1200 / WASD降下倍率0.9に対し、旧テストはC++初期値1200 / 1800 / 0.8を前提としていた。
+- 実測: Burst前の水平速度1000、低速からのShift直後1502.5。自然落下-588、WASD落下-529.2（比率0.9、30/60/120 fps共通）。
+  BurstAndBrakeの旧条件はAlt検証中に床へ着地し、Z=92.15 / Walkingとなっていた。
+- 移動テストを保存済み設定の加算量・上限・減衰・重力倍率で検証する形へ修正。
+  BurstAndBrakeの開始高度を10000へ上げ、落下を受け止める時間3秒と空中前提のassertを追加。
+  失敗assertを削除して成功扱いにはしていない。ゲームプレイの実装・調整値は変更不要と判断。
+- `LightningHit`を追加。保存済みプレイヤー/敵/発射Blueprintを使い、QでのLightning選択、通常/最大チャージの実sweep命中、HP100→75/50、非燃焼・非変位・追加持続ダメージなしを確認。
+- 移動READMEの空中ジャンプ無料、弾の速度継承が常時有効という古い記述を現行実装へ訂正。
+  詳細な機能範囲・再現コマンド・PIE手順は`Docs/BaselineValidation.md`。
+
+### 今回実行した検証
+
+| 項目 | 結果 / 証跡（Savedはローカルのみ） |
+|---|---|
+| UE 5.8.3 Win64 Development Editor | 成功。`Saved/Logs/BaselineFinalEditorBuild.log` |
+| 修正前 `WEVORA.` 全テスト | 22件中20成功、既知2件失敗を再現。`Saved/Automation/BaselineBefore/index.json` |
+| 修正後 `WEVORA.` 全テスト | **23/23成功、未実行0、テスト警告0・エラー0**。移動7、魔法14、敵AI1、Blueprintルール1。`Saved/Automation/BaselineFinal/index.json` / `Saved/Logs/BaselineFinal.log`。共有用要約`Docs/BaselineAutomationResults.json` |
+| Blueprintコンパイル | 346件成功（/Game内52件を含む）、コンパイルエラー0・警告0・ロード失敗0、終了コード0。保存なし。`Saved/Logs/BaselineBlueprintCompile.log` |
+| Win64 Development Gameコードビルド | 成功。最終テスト修正も含めた再ビルド`Saved/Logs/BaselineFinalPlayerBuild.log` |
+| 既存マップのCook / Stage / Pak / Package / Archive | 成功、UAT終了コード0。`Saved/Logs/BaselinePackaging.log`。最終Player再ビルド後もCook済みデータを使って再Stage/Pak/Package/Archive成功（`BaselineFinalPackaging.log`）。出力`Saved/BaselinePlayer/Windows/WEVORA.exe` |
+| パッケージ版単体起動 | D3D12 / SM6で`Lvl_ThirdPerson`のロード・World開始・452フレームの実行と通常終了を確認、終了コード0。最終再ビルド/再Stage後の再起動も成功。`Saved/Logs/BaselinePlayerRun.log` / `BaselineFinalPlayerRun.log`。`-benchmark -seconds=15`、実入力なし。画面の目視/操作感の成功とは扱わない |
+| アセット保護 | Content / Config追跡対象763ファイルの作業前後SHA-256一致、`.uasset` / `.umap` / Config変更なし。`git lfs fsck`成功、`git diff --check`成功 |
+
+ビルドにはMSVC 14.51（UE推奨14.50より新しい）の警告とエンジンヘッダーの非推奨API警告あり。
+途中の診断用テストのコンパイルエラーは修正済み。CookerがDLLを使用中のリンク失敗（LNK1104）はCook終了後の再リンクで解消。
+Cookでは名前解決警告、Playerではドライバーに伴うTSR 16-bit無効化と初回PSO生成のヒッチ記録あり。
+全ログの警告0や性能検証済みとは主張しない。
+
+### 現在の機能範囲と残課題
+
+- Fire / Wind、通常攻撃、チャージ、4Gesture認識、空中Cast、命中/燃焼/押出、壁遮断、照準共有、敵AI、Blueprintの互換性は上記Headless回帰テストで成功。
+- Lightningは選択・共通Projectile・属性別の仮演出・単発ダメージまで。感電、連鎖、部位別作用は未実装。
+  Shapeは4種あるが配送は共通の弾。Wind×Burningはルール拡張のテスト例で、標準の複合反応としては未設定。
+- レティクルは既存の十字表示。円形化はCombat Playground段階。Lightningのジェスチャートレイル色はWindと共通。
+  正式HUD、Niagara素材差替の実描画、ネットワーク同期、死亡画面/リスポーンは今回対象外。
+- **未検証: PIE/Playerでの実キーボード・マウス入力、照準/操作感、日本語HP/燃焼UI、VFXの見た目、30/60/120 fpsの体感。**
+  `Docs/BaselineValidation.md`末尾の5項目を、人間がPIEとパッケージ版で確認する。
+- マージ判断: コード/自動テスト/アセット保護/Playerビルド・起動の技術的阻害要因は解消。
+  ただし上記の実プレイ確認が残るため**Draft維持、現時点の無条件マージは推奨しない**。
+  人間の確認結果をPR #7へ追記してからDraft解除・mainへの統合を判断する。
+
+以下の過去記録にある失敗・未確認事項は当時の結果。上記の今回結果と区別する。
 
 ## 2026-10-08 Player攻撃の確認
 
