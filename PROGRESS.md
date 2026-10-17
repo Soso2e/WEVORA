@@ -6,6 +6,9 @@
 
 ## 2026-10-17 Combat Playground v1
 
+Draft PR: https://github.com/Soso2e/WEVORA/pull/8 （base: main、head: feature/combat-playground）。
+Stage A〜Eをコミット・Push済み。mainは`3ac0ace`のまま、マージしていない。
+
 - Stage A: 独立`L_CombatPlayground`、専用Player/GameMode/Target Blueprint、5体の静止・横・縦・AI・遮蔽対象を作成・保存・再読込確認。既存マップ／Blueprintは変更しない。
 - 敵のHP／Reaction／AIを継承し、自動復活、R全体リセット、死亡・範囲外からの再試行を追加。
 - 実値調査: 保存済み巡航1000、Fire/Wind/Lightning弾速2200/2600/3200、半径16、CT0.5、Charge2秒。旧Blueprintのグラフと値を維持。

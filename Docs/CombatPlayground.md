@@ -2,6 +2,8 @@
 
 独立マップ: `/Game/WEVORA/Maps/L_CombatPlayground`。既存の`Lvl_ThirdPerson`と既存Blueprintを保存し直さず、専用プレイヤー／GameModeを複製する。
 
+Draft PR: [#8](https://github.com/Soso2e/WEVORA/pull/8)。人間の操作・バランス評価を待つ。mainへのマージは行わない。
+
 ![Windows Playerの初期フレーム](Images/CombatPlayground.png)
 
 ## 主要な判断
