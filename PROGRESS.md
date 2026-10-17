@@ -2,7 +2,16 @@
 
 最終更新: 2026-10-17
 
-現在フェーズ: workの統合前ベースライン検証（自動検証完了、PIE/Playerの実入力・見た目は人間の確認待ち）
+現在フェーズ: Combat Playground v1（feature/combat-playground、main=3ac0aceから開発）
+
+## 2026-10-17 Combat Playground v1
+
+- Stage A: 独立`L_CombatPlayground`、専用Player/GameMode/Target Blueprint、5体の静止・横・縦・AI・遮蔽対象を作成・保存・再読込確認。既存マップ／Blueprintは変更しない。
+- 敵のHP／Reaction／AIを継承し、自動復活、R全体リセット、死亡・範囲外からの再試行を追加。
+- 実値調査: 保存済み巡航1000、Fire/Wind/Lightning弾速2200/2600/3200、半径16、CT0.5、Charge2秒。旧Blueprintのグラフと値を維持。
+- Stage A Editorビルド成功。`WEVORA.` **26/26成功**（既存23＋新規ResetAndRespawn/MotionAndWind/FullTrialReset）。`Saved/Automation/PlaygroundStageA/index.json`。
+- マップ生成終了コード0、保存済み5対象・GameMode確認（`Saved/CombatPlayground/MapCreation.json`）。実描画・入力・Playerビルドは後続Stageで検証する。
+- 設計・再現手順: `Docs/CombatPlayground.md`。
 
 ## 2026-10-17 PR #7: work → main 安定化
 

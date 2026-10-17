@@ -150,6 +150,16 @@ void UWEVORASpellWeavingComponent::CancelWeave()
 	if (bWasIdle) { OnSpellPresentationChanged.Broadcast(State, Context); }
 }
 
+void UWEVORASpellWeavingComponent::ResetCombat()
+{
+	CancelWeave();
+	NextAttackTime = AttackStartTime = ShapeStartTime = 0;
+	bHasLastCast = false;
+	Context.Element = AvailableElements.IsEmpty() ? EWEVORASpellElement::Fire : AvailableElements[0];
+	LastCastContext = FWEVORASpellContext();
+	OnSpellPresentationChanged.Broadcast(State, Context);
+}
+
 uint64 UWEVORASpellWeavingComponent::DebugKey() const
 {
 	return uint64(GetUniqueID()) | (uint64(1) << 32);

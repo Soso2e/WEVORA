@@ -21,6 +21,14 @@ void UWEVORAHealthComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
+void UWEVORAHealthComponent::ResetHealth()
+{
+	if (!GetOwner()->HasAuthority()) { return; }
+	MaxHealth = FMath::Max(1.0f, MaxHealth);
+	Health = MaxHealth;
+	OnHealthChanged.Broadcast(Health, MaxHealth);
+}
+
 void UWEVORAHealthComponent::ReceiveDamage(AActor* DamagedActor, float Damage,
 	const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser)
 {

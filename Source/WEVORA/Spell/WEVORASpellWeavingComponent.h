@@ -68,6 +68,8 @@ public:
 	void RecordLook(FVector2D LookDelta);
 	UFUNCTION(BlueprintCallable, Category="Spell")
 	void CancelWeave();
+	UFUNCTION(BlueprintCallable, Category="Spell")
+	void ResetCombat();
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
