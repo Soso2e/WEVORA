@@ -3,6 +3,7 @@
 #include "Components/ActorComponent.h"
 #include "Spell/WEVORASpellTypes.h"
 #include "Spell/WEVORAZoneProfile.h"
+#include "Spell/WEVORALocalReactionProfile.h"
 #include "WEVORALocalizedStatusComponent.generated.h"
 
 class AController;
@@ -53,6 +54,8 @@ public:
 	/** Opt-in prototype profile. Leave off when supplying a production rig profile. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Localized")
 	bool bUsePrototypeProfile = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Localized")
+	TObjectPtr<UWEVORALocalReactionProfile> ReactionProfile;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Localized", meta=(ClampMin="0"))
 	float MaxIntensity = 10;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Localized", meta=(ClampMin="0"))
@@ -68,6 +71,8 @@ public:
 	FName LastHitZone;
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Localized")
 	float LastPeriodicDamage = 0;
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Localized")
+	TArray<FString> LastPropagationPaths;
 	UPROPERTY(BlueprintAssignable, Category="Localized")
 	FWEVORALocalStatesChanged OnStatesChanged;
 	const UWEVORAZoneProfile* GetProfile() const;
@@ -85,9 +90,15 @@ public:
 	/** Deterministic simulation seam. Runtime calls once per tick; tests may disable tick and step explicitly. */
 	UFUNCTION(BlueprintCallable, Category="Localized")
 	void AdvanceStatuses(float Seconds);
+	/** Direct statuses are immediately visible; reactions commit together after all frame hits. */
+	bool QueueReaction(const FWEVORASpellData& Spell, const FHitResult& Hit);
+	UFUNCTION(BlueprintCallable, Category="Localized")
+	void CommitReactions();
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 	bool CanMutate() const;
+private:
+	TArray<FWEVORALocalReactionInput> PendingInputs;
 };

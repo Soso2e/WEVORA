@@ -27,5 +27,4 @@ private:
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> OutlineMaterial;
 	FTimerHandle PulseTimer;
-	TSet<TWeakObjectPtr<AActor>> HitInPulse;
 };

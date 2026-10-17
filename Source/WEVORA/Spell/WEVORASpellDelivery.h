@@ -21,4 +21,10 @@ public:
 	virtual void InitializeSpell_Implementation(const FWEVORASpellLaunch& InLaunch);
 	UFUNCTION(BlueprintCallable, Category="Spell")
 	bool DeliverToTarget(AActor* Target, const FHitResult& Hit);
+	bool DeliverToTargetZones(AActor* Target, const TArray<FHitResult>& Hits);
+protected:
+	/** A Field pulse is a new event; duplicate callbacks inside one event are ignored. */
+	void BeginDeliveryEvent() { DeliveredTargets.Reset(); }
+private:
+	TSet<TWeakObjectPtr<AActor>> DeliveredTargets;
 };

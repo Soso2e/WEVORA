@@ -1,4 +1,6 @@
 #include "Spell/WEVORALocalizedStatusComponent.h"
+#include "Spell/WEVORALocalReactionSolver.h"
+#include "Spell/WEVORASpellReactionComponent.h"
 #include "AI/WEVORAHealthComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
@@ -65,6 +67,10 @@ bool UWEVORALocalizedStatusComponent::ApplyStatus(const FWEVORALocalStatus& Appl
 		|| !FMath::IsFinite(Application.Remaining) || !FMath::IsFinite(Application.DamagePerSecond)
 		|| Application.Intensity <= 0 || Application.Remaining <= 0) { return false; }
 	FWEVORALocalStatus Next = Application;
+	if (UWEVORASpellReactionComponent* Legacy = GetOwner()->FindComponentByClass<UWEVORASpellReactionComponent>())
+	{
+		Legacy->ClearLegacyBurning();
+	}
 	FWEVORALocalStatus* Previous = States.FindByPredicate([&](const FWEVORALocalStatus& S)
 	{ return S.Zone == Next.Zone && S.Type == Next.Type; });
 	if (Previous)
@@ -108,13 +114,14 @@ void UWEVORALocalizedStatusComponent::RemoveStatus(FName Zone, FName Type)
 {
 	if (!GetOwner()->HasAuthority()) { return; }
 	States.RemoveAll([Zone, Type](const FWEVORALocalStatus& S) { return S.Zone == Zone && S.Type == Type; });
-	SetComponentTickEnabled(!States.IsEmpty()); OnStatesChanged.Broadcast();
+	SetComponentTickEnabled(!States.IsEmpty() || !PendingInputs.IsEmpty()); OnStatesChanged.Broadcast();
 }
 
 void UWEVORALocalizedStatusComponent::ResetStatuses()
 {
 	if (!GetOwner()->HasAuthority()) { return; }
 	States.Reset(); LastHitZone = NAME_None; LastPeriodicDamage = 0;
+	PendingInputs.Reset(); LastPropagationPaths.Reset();
 	SetComponentTickEnabled(false); OnStatesChanged.Broadcast();
 }
 
@@ -153,5 +160,38 @@ void UWEVORALocalizedStatusComponent::AdvanceStatuses(float Seconds)
 void UWEVORALocalizedStatusComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	CommitReactions();
 	AdvanceStatuses(DeltaTime);
+}
+
+bool UWEVORALocalizedStatusComponent::QueueReaction(const FWEVORASpellData& Spell, const FHitResult& Hit)
+{
+	if (!CanMutate() || Spell.Power <= 0 || !FMath::IsFinite(Spell.Power) || Hit.ImpactPoint.ContainsNaN()) { return false; }
+	LastHitZone = GetProfile()->ResolveHit(Hit, GetOwner());
+	if (LastHitZone.IsNone()) { return false; }
+	const UWEVORALocalReactionProfile* Rules = ReactionProfile ? ReactionProfile.Get() : GetDefault<UWEVORALocalReactionProfile>();
+	if (!Rules->Rules.ContainsByPredicate([&](const FWEVORALocalReactionRule& R) { return R.Trigger == Spell.Element; })) { return false; }
+	FWEVORALocalReactionInput Input;
+	Input.Zone = LastHitZone; Input.Element = Spell.Element; Input.Power = Spell.Power;
+	Input.LocalImpact = GetOwner()->GetActorTransform().InverseTransformPosition(Hit.ImpactPoint);
+	// Reject exact duplicate contacts inside a batch, rather than multiplying propagation.
+	const bool Duplicate = PendingInputs.ContainsByPredicate([&](const FWEVORALocalReactionInput& P)
+	{ return P.Zone == Input.Zone && P.Element == Input.Element && P.Power == Input.Power && P.LocalImpact == Input.LocalImpact; });
+	if (!Duplicate && PendingInputs.Num() < 128) { PendingInputs.Add(Input); }
+	SetComponentTickEnabled(true);
+	return true;
+}
+
+void UWEVORALocalizedStatusComponent::CommitReactions()
+{
+	if (!CanMutate()) { ResetStatuses(); return; }
+	if (PendingInputs.IsEmpty()) { return; }
+	TArray<FWEVORALocalReactionInput> Batch = MoveTemp(PendingInputs);
+	PendingInputs.Reset();
+	const UWEVORALocalReactionProfile* Rules = ReactionProfile ? ReactionProfile.Get() : GetDefault<UWEVORALocalReactionProfile>();
+	// Every event/rule reads the same immutable snapshot. New propagation never becomes a seed in this batch.
+	const FWEVORALocalReactionResult Result = WEVORALocalReactions::Solve(*GetProfile(), *Rules, *GetOwner(), States, Batch);
+	LastPropagationPaths = Result.Paths; LastPropagationPaths.Sort();
+	for (const FWEVORALocalStatus& S : Result.Applications) { ApplyStatus(S); }
+	OnStatesChanged.Broadcast();
 }

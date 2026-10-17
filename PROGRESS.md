@@ -287,3 +287,8 @@ Cookでは名前解決警告、Playerではドライバーに伴うTSR 16-bit無
 - 汎用局所Statusコンポーネント、4Policy、期限・強度・蓄積・Source/時刻、最大DPS包絡線の区間積分を追加。
 - Healthの死亡/reset通知で即時解除。UE5.8 Editorビルド成功、全36/36テスト成功。30/60/120fpsと4秒hitchで20HPの同一結果を検証。
 
+## Localized Reactions Stage C
+- FireをHit Zoneへ付与し、Windを同フレームsnapshotで解決。隣接・距離・hop・強度とDataAsset Ruleで伝播を制限。提案mergeで循環/同イベント増幅を防止。
+- Deliveryのイベント重複防止とVolumeの複数Zone batchを追加。直撃とWind外力は対象ごと一回、全身/局所燃焼は排他。
+- Editorビルド成功、全40/40成功。Fire手→Wind→腕/胴、逆順入力、循環、距離、局所/全身移行、複数Zone/重複callbackを検証。初回は3.9秒比較のfloat許容値が厳しすぎたため0.0001秒に修正。
+
