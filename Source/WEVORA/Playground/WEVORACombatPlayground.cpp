@@ -1,5 +1,7 @@
 #include "Playground/WEVORACombatPlayground.h"
 #include "Playground/WEVORAPlaygroundTarget.h"
+#include "Playground/WEVORALocalizedPlaygroundTarget.h"
+#include "Spell/WEVORALocalizedStatusComponent.h"
 #include "WEVORACharacter.h"
 #include "AI/WEVORAHealthComponent.h"
 #include "AI/WEVORAEnemyProjectile.h"
@@ -16,6 +18,7 @@ AWEVORACombatPlayground::AWEVORACombatPlayground()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.TickInterval = 0.1f;
+	LocalizedSampleClass = AWEVORALocalizedPlaygroundTarget::StaticClass();
 }
 
 AWEVORACombatPlayground* AWEVORACombatPlayground::Find(const UWorld* World)
@@ -28,6 +31,12 @@ AWEVORACombatPlayground* AWEVORACombatPlayground::Find(const UWorld* World)
 void AWEVORACombatPlayground::BeginPlay()
 {
 	Super::BeginPlay();
+	if (HasAuthority() && bSpawnLocalizedSample && LocalizedSampleClass)
+	{
+		bool bExists = false;
+		for (TActorIterator<AWEVORALocalizedPlaygroundTarget> It(GetWorld()); It; ++It) { bExists = true; break; }
+		if (!bExists) { GetWorld()->SpawnActor<AWEVORALocalizedPlaygroundTarget>(LocalizedSampleClass, LocalizedSampleTransform); }
+	}
 	for (TActorIterator<AWEVORAPlaygroundTarget> It(GetWorld()); It; ++It)
 	{
 		Targets.Add(*It);
@@ -77,6 +86,24 @@ void AWEVORACombatPlayground::Tick(float DeltaSeconds)
 		{
 			DrawDebugDirectionalArrow(GetWorld(), Target->GetActorLocation(), Target->GetActorLocation()
 				+ Target->MeasuredVelocity * 0.5f, 25, FColor::Cyan, false, 0.12f, 0, 2);
+			if (const UWEVORALocalizedStatusComponent* Local = Target->FindComponentByClass<UWEVORALocalizedStatusComponent>())
+			{
+				if (const UWEVORAZoneProfile* Profile = Local->GetProfile())
+				{
+					for (const FWEVORAZoneDefinition& Zone : Profile->Zones)
+					{
+						const FVector Position = Profile->GetZonePosition(Zone.ID, Target);
+						const FColor Color = Local->HasStatus(Zone.ID, TEXT("Burning")) ? FColor::Orange : FColor::Cyan;
+						DrawDebugSphere(GetWorld(), Position, Zone.ID == TEXT("Torso") ? 45 : 22, 12, Color, false, 0.12f);
+						DrawDebugString(GetWorld(), Position + FVector(0,0,26), Zone.ID.ToString(), nullptr, Color, 0.12f, true, 0.7f);
+					}
+					for (const FWEVORAZoneLink& Link : Profile->Links)
+					{
+						DrawDebugLine(GetWorld(), Profile->GetZonePosition(Link.From, Target), Profile->GetZonePosition(Link.To, Target),
+							FColor::Silver, false, 0.12f, 0, 1);
+					}
+				}
+			}
 		}
 	}
 }

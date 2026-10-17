@@ -60,3 +60,15 @@ Deliveryが対象ごとに一イベント一回を保証する。VolumeはCompon
 Fieldの各pulseは新イベント。同じpulseの重複callbackは無視。Projectileの既存bHitConsumedも維持。判定後にImpactを通知する。
 Volumeは各Zoneの位置で形の範囲とLOSを調べる。Actor原点が範囲外でも接触した手が範囲内なら局所的に適用できる。
 局所入力は一batch128件まで。状態・経路・入力・DoTは死亡／ResetReactions／ResetHealth／EndPlayで破棄する。
+
+## Stage D: Playground
+
+既存5対象と保存済みContent/Configを維持し、Combat PlaygroundのBeginPlayで6体目の`WEVORALocalizedPlaygroundTarget`を生成する。
+既定位置は(1200,600,300)cm、名前は`06 Localized: Fire hand -> Wind`。bSpawnLocalizedSample / LocalizedSampleTransform / LocalizedSampleClassで変更できる。
+既存クラスを汎用基盤の依存先にはしない。新しい対象クラスは仮の表示とColliderを提供するサンプルだけ。
+
+胴体は既存半径45cm Collider、ほか7Zoneは半径22cmのQueryOnly Colliderと衝突なし表示Sphere。表示Sphereは状態に応じ青→橙へ変化する。
+局所対象は全身炎VFXを無効にする。旧5対象の全身Fire/Wind/Lightning、既存AI・移動・復活・resetは維持する。
+F2はCollider・Zone名・隣接線を表示し、HUDに全8Zoneの状態名/残時間/Intensity/Accumulation、最後のZone、直近HP差、最後の伝播経路を表示する。
+HUDは直近命中が局所対象ならその対象、その他は局所サンプルを表示する。世界座標の全Zone表示とLocalStatusesのDetailsにも完全な状態・経路がある。
+Debugの切替は衝突設定・範囲・強度・HPの値を変更しない。色・文字・線は戦闘処理を呼ばない。

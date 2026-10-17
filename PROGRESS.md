@@ -292,3 +292,7 @@ Cookでは名前解決警告、Playerではドライバーに伴うTSR 16-bit無
 - Deliveryのイベント重複防止とVolumeの複数Zone batchを追加。直撃とWind外力は対象ごと一回、全身/局所燃焼は排他。
 - Editorビルド成功、全40/40成功。Fire手→Wind→腕/胴、逆順入力、循環、距離、局所/全身移行、複数Zone/重複callbackを検証。初回は3.9秒比較のfloat許容値が厳しすぎたため0.0001秒に修正。
 
+## Localized Reactions Stage D
+- 保存Assetを変更せず6体目の仮8Zone対象をruntime生成。7Collider+既存Torso、局所色変化、F2でZone/寿命/強度/蓄積/経路/HPを表示。既存5対象は維持。
+- Editorビルド成功、全42/42成功。実Projectileの右手Fire→隣接腕Wind→胴体伝播/外力、実Volumeの手のみ/8Zone同時命中、死亡復活/全体reset、F2判定不変を確認。
+

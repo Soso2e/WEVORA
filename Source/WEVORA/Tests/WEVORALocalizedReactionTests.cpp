@@ -4,6 +4,9 @@
 #include "Spell/WEVORALocalizedStatusComponent.h"
 #include "Spell/WEVORASpellReactionComponent.h"
 #include "Spell/WEVORASpellProjectile.h"
+#include "Spell/WEVORASpellVolume.h"
+#include "Playground/WEVORALocalizedPlaygroundTarget.h"
+#include "Playground/WEVORACombatPlayground.h"
 #include "AI/WEVORAHealthComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/DamageType.h"
@@ -291,6 +294,98 @@ bool FLocalLegacyCompatibilityTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Unknown hit still has normal direct damage"), Health->Health, 75.0f);
 	TestTrue(TEXT("Unknown hit cannot burn a guessed zone"), Local->States.IsEmpty());
 	TestEqual(TEXT("Unknown hit cannot fall back to whole-body burn"), Receiver->BurningRemaining, 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLocalProjectileIntegrationTest, "WEVORA.Localized.RealProjectileFireWindAndRespawn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FLocalProjectileIntegrationTest::RunTest(const FString& Parameters)
+{
+	FLocalizedWorld Scene;
+	AWEVORALocalizedPlaygroundTarget* Target = Scene.World->SpawnActor<AWEVORALocalizedPlaygroundTarget>(FVector(1000,0,500), FRotator::ZeroRotator);
+	UWEVORALocalizedStatusComponent* Local = Target->LocalStatuses;
+	TestEqual(TEXT("Seven additional colliders plus existing torso"), Target->ZoneColliders.Num(), 7);
+	auto Shoot = [&](EWEVORASpellElement Element, FName Zone)
+	{
+		const FVector Position = Local->GetProfile()->GetZonePosition(Zone, Target);
+		const FTransform Transform(FRotator::ZeroRotator, FVector(Position.X - 700, Position.Y, Position.Z));
+		AWEVORASpellProjectile* Shot = Scene.World->SpawnActorDeferred<AWEVORASpellProjectile>(AWEVORASpellProjectile::StaticClass(), Transform);
+		FWEVORASpellLaunch Launch; Launch.Spell.Element = Element; Launch.Spell.Direction = Launch.Direction = FVector::ForwardVector;
+		Launch.Parameters.Radius = 10; Launch.Parameters.Speed = 2000;
+		Shot->bLogEvents = false; Shot->InitializeSpell(Launch); Shot->FinishSpawning(Transform);
+		Scene.Step(0.4f);
+		TestTrue(TEXT("Real swept projectile consumed by collider"), Shot->IsActorBeingDestroyed());
+	};
+	Shoot(EWEVORASpellElement::Fire, TEXT("RightHand"));
+	TestEqual(TEXT("Real projectile resolves hand"), Local->LastHitZone, FName(TEXT("RightHand")));
+	TestEqual(TEXT("Projectile ignites only hand"), Local->States.Num(), 1);
+	TestTrue(TEXT("Fire direct plus bounded elapsed local DoT"), Target->HealthComponent->Health < 75 && Target->HealthComponent->Health > 73);
+	const FVector BeforeWind = Target->GetActorLocation();
+	Shoot(EWEVORASpellElement::Wind, TEXT("RightArm"));
+	TestTrue(TEXT("Wind projectile at neighbor spreads to torso"), Local->HasStatus(TEXT("Torso"), TEXT("Burning")));
+	TestTrue(TEXT("Wind simultaneously moves the target"), Target->GetActorLocation().X > BeforeWind.X);
+	TestTrue(TEXT("Real integration records propagation"), Local->LastPropagationPaths.Contains(TEXT("RightHand -> RightArm -> Torso")));
+	Target->RespawnDelay = 0.1f;
+	UGameplayStatics::ApplyDamage(Target, 1000, nullptr, nullptr, UDamageType::StaticClass());
+	TestTrue(TEXT("Death clears all local state immediately"), Local->States.IsEmpty());
+	TestTrue(TEXT("Death clears propagation"), Local->LastPropagationPaths.IsEmpty());
+	TestFalse(TEXT("Death stops local tick"), Local->IsComponentTickEnabled());
+	Scene.Step(0.2f);
+	TestTrue(TEXT("Target respawns"), Target->HealthComponent->IsAlive() && !Target->IsHidden());
+	TestTrue(TEXT("Respawn has no old states"), Local->States.IsEmpty());
+	FWEVORASpellData Fire, Wind; Wind.Element = EWEVORASpellElement::Wind;
+	Target->SpellReactionComponent->ReceiveSpell(Fire, Scene.Hit(Local, TEXT("RightHand")), nullptr, nullptr);
+	Target->SpellReactionComponent->ReceiveSpell(Wind, Scene.Hit(Local, TEXT("RightHand")), nullptr, nullptr);
+	AWEVORACombatPlayground* Trial = Scene.World->SpawnActor<AWEVORACombatPlayground>();
+	Trial->ResetTrial(); Local->CommitReactions();
+	TestTrue(TEXT("Global reset discards pending reactions and states"), Local->States.IsEmpty() && Local->LastPropagationPaths.IsEmpty());
+	TestTrue(TEXT("Global reset clears last hit"), Local->LastHitZone.IsNone());
+	TestEqual(TEXT("Global reset restores configured HP"), Target->HealthComponent->Health, Trial->TargetHealth);
+	Scene.Step(0.5f); TestEqual(TEXT("Reset has no delayed DoT"), Target->HealthComponent->Health, Trial->TargetHealth);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLocalVolumeIntegrationTest, "WEVORA.Localized.RealVolumeMultiZoneAndDebugInvariance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FLocalVolumeIntegrationTest::RunTest(const FString& Parameters)
+{
+	FLocalizedWorld Scene;
+	AWEVORALocalizedPlaygroundTarget* Target = Scene.World->SpawnActor<AWEVORALocalizedPlaygroundTarget>(FVector(1000,0,500), FRotator::ZeroRotator);
+	UWEVORALocalizedStatusComponent* Local = Target->LocalStatuses;
+	FWEVORASpellLaunch Launch; Launch.Spell.Delivery = EWEVORASpellDelivery::Area;
+	Launch.Spell.Direction = Launch.Direction = FVector::ForwardVector; Launch.Volume.Width = 28;
+	auto Deliver = [&](FVector Position)
+	{
+		FTransform Transform(FRotator::ZeroRotator, Position);
+		AWEVORASpellVolume* Volume = Scene.World->SpawnActorDeferred<AWEVORASpellVolume>(AWEVORASpellVolume::StaticClass(), Transform);
+		Volume->InitializeSpell(Launch); Volume->FinishSpawning(Transform); return Volume;
+	};
+	const FVector Hand = Local->GetProfile()->GetZonePosition(TEXT("RightHand"), Target);
+	AWEVORASpellVolume* Small = Deliver(Hand);
+	TestEqual(TEXT("Small volume hits only local hand"), Local->States.Num(), 1);
+	TestTrue(TEXT("Hand selected with actor origin outside volume"), Local->HasStatus(TEXT("RightHand"), TEXT("Burning")));
+	TestEqual(TEXT("Single direct hit"), Target->HealthComponent->Health, 75.0f);
+	TestFalse(TEXT("Same event callback cannot damage again"), Small->DeliverToTarget(Target, Scene.Hit(Local, TEXT("RightHand"))));
+	Small->Destroy(); Target->ResetTarget();
+	Launch.Spell.Delivery = EWEVORASpellDelivery::Sweep; Launch.Volume.Range = 1000; Launch.Volume.Width = 650; Launch.Volume.Height = 200;
+	AWEVORASpellVolume* Wide = Deliver(Target->GetActorLocation() - FVector(500,0,0));
+	TestEqual(TEXT("Wide real volume hits all eight zones"), Local->States.Num(), 8);
+	TestEqual(TEXT("Eight colliders do one direct hit"), Target->HealthComponent->Health, 75.0f);
+	Local->AdvanceStatuses(1);
+	TestEqual(TEXT("Eight simultaneous burns still only five DPS"), Target->HealthComponent->Health, 70.0f);
+	Wide->Destroy(); Target->ResetTarget();
+	AWEVORACombatPlayground* Trial = Scene.World->SpawnActor<AWEVORACombatPlayground>();
+	FHitResult Before, After;
+	const FVector Start = Hand - FVector(300,0,0), End = Hand + FVector(300,0,0);
+	Scene.World->LineTraceSingleByChannel(Before, Start, End, ECC_Visibility);
+	Trial->ToggleDebug();
+	Scene.World->LineTraceSingleByChannel(After, Start, End, ECC_Visibility);
+	TestEqual(TEXT("F2 cannot change resolved hit"), Local->GetProfile()->ResolveHit(Before, Target), Local->GetProfile()->ResolveHit(After, Target));
+	TestEqual(TEXT("F2 leaves HP unchanged"), Target->HealthComponent->Health, 100.0f);
+	for (const USphereComponent* Collider : Target->ZoneColliders)
+	{
+		TestEqual(TEXT("Gameplay colliders remain query-only"), Collider->GetCollisionEnabled(), ECollisionEnabled::QueryOnly);
+	}
 	return true;
 }
 #endif
