@@ -67,6 +67,9 @@ public:
 	FWEVORASpellStateChanged OnStateChanged;
 	UFUNCTION(BlueprintCallable, Category="Spell|Reaction")
 	bool ReceiveSpell(const FWEVORASpellData& Spell, const FHitResult& Hit, AController* Instigator, AActor* Causer);
+	/** One collision/pulse can touch many zones; direct damage and displacement occur once per target. */
+	bool ReceiveSpellBatch(const FWEVORASpellData& Spell, const TArray<FHitResult>& Hits, AController* Instigator, AActor* Causer);
+	void ClearLegacyBurning();
 	UFUNCTION(BlueprintPure, Category="Spell|State")
 	bool HasState(EWEVORASpellTargetState State) const;
 	UFUNCTION(BlueprintPure, Category="Spell|State")
@@ -75,6 +78,7 @@ public:
 	void ResetReactions();
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 protected:
+	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 private:
 	float BurningDamagePerSecond = 0.0f;

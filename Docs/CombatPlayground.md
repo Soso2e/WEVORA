@@ -1,5 +1,8 @@
 # Combat Playground v1
 
+局所反応のStacked PRでは、既存5対象に加えて実行時に6体目の仮Zone対象を生成する。Fireで右手を燃焼→Windで腕・胴体へ伝播。F2でZone・残時間・強度・蓄積・経路・HPを確認できる。
+既存Contentは保存し直さない。設計・調整・新しいPIE手順は[LocalizedElementalReactions.md](LocalizedElementalReactions.md)。PR #8本体の人間検証は引き続き未完了。
+
 独立マップ: `/Game/WEVORA/Maps/L_CombatPlayground`。既存の`Lvl_ThirdPerson`と既存Blueprintを保存し直さず、専用プレイヤー／GameModeを複製する。
 
 Draft PR: [#8](https://github.com/Soso2e/WEVORA/pull/8)。人間の操作・バランス評価を待つ。mainへのマージは行わない。

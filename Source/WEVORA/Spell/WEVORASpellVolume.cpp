@@ -1,5 +1,6 @@
 #include "Spell/WEVORASpellVolume.h"
 #include "Spell/WEVORASpellEffectComponent.h"
+#include "Spell/WEVORALocalizedStatusComponent.h"
 #include "AI/WEVORAHealthComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/PrimitiveComponent.h"
@@ -82,7 +83,7 @@ void AWEVORASpellVolume::BeginPlay()
 void AWEVORASpellVolume::Pulse()
 {
 	if (!HasAuthority()) { return; }
-	HitInPulse.Reset();
+	BeginDeliveryEvent();
 	const bool bSweep = Launch.Spell.Delivery == EWEVORASpellDelivery::Sweep;
 	const float Radius = bSweep ? FMath::Sqrt(FMath::Square(Launch.Volume.Range) +
 		FMath::Square(Launch.Volume.Width) + FMath::Square(Launch.Volume.Height)) : Launch.Volume.Width;
@@ -91,14 +92,25 @@ void AWEVORASpellVolume::Pulse()
 	TArray<FOverlapResult> Overlaps;
 	GetWorld()->OverlapMultiByObjectType(Overlaps, GetActorLocation(), FQuat::Identity,
 		FCollisionObjectQueryParams::AllDynamicObjects, FCollisionShape::MakeSphere(Radius), Query);
+	TMap<AActor*, TArray<FHitResult>> HitsByTarget;
 	for (const FOverlapResult& Overlap : Overlaps)
 	{
 		AActor* Target = Overlap.GetActor();
-		if (!IsValid(Target) || Target == GetInstigator() || HitInPulse.Contains(Target)) { continue; }
-		HitInPulse.Add(Target);
+		if (!IsValid(Target) || Target == GetInstigator()) { continue; }
 		UWEVORAHealthComponent* Health = Target->FindComponentByClass<UWEVORAHealthComponent>();
 		if (!Health || !Health->IsAlive()) { continue; }
-		const FVector Position = Target->GetActorLocation();
+		FVector Position = Target->GetActorLocation();
+		FHitResult ZoneHit(Target, Overlap.GetComponent(), Position, -Launch.Direction);
+		ZoneHit.Item = Overlap.ItemIndex;
+		if (const UWEVORALocalizedStatusComponent* Local = Target->FindComponentByClass<UWEVORALocalizedStatusComponent>())
+		{
+			if (const UWEVORAZoneProfile* Profile = Local->GetProfile())
+			{
+				const FName Zone = Profile->ResolveHit(ZoneHit, Target);
+				if (Zone.IsNone()) { continue; }
+				Position = Profile->GetZonePosition(Zone, Target);
+			}
+		}
 		const FVector Relative = GetActorTransform().InverseTransformPosition(Position);
 		if (bSweep && (Relative.X < 0 || Relative.X > Launch.Volume.Range ||
 			FMath::Abs(Relative.Y) > Launch.Volume.Width || FMath::Abs(Relative.Z) > Launch.Volume.Height)) { continue; }
@@ -109,8 +121,17 @@ void AWEVORASpellVolume::Pulse()
 		// Covers both world geometry and intervening pawns. Volumes never damage through walls.
 		if (GetWorld()->LineTraceSingleByChannel(Sight, GetActorLocation(), Position, ECC_Visibility, Query)
 			&& Sight.GetActor() != Target) { continue; }
-		FHitResult Hit(Target, Overlap.GetComponent(), Position, -Launch.Direction);
-		if (DeliverToTarget(Target, Hit)) { AttackEffect->SpawnImpact(Hit); }
+		ZoneHit.ImpactPoint = ZoneHit.Location = Position;
+		HitsByTarget.FindOrAdd(Target).Add(ZoneHit);
+	}
+	TArray<AActor*> Targets; HitsByTarget.GetKeys(Targets);
+	Targets.Sort([](const AActor& A, const AActor& B) { return A.GetPathName() < B.GetPathName(); });
+	for (AActor* Target : Targets)
+	{
+		TArray<FHitResult>& Hits = HitsByTarget[Target];
+		Hits.Sort([](const FHitResult& A, const FHitResult& B)
+		{ return GetNameSafe(A.GetComponent()) < GetNameSafe(B.GetComponent()); });
+		if (DeliverToTargetZones(Target, Hits)) { AttackEffect->SpawnImpact(Hits[0]); }
 	}
 	if (Launch.bDebugTrajectory)
 	{

@@ -5,6 +5,7 @@
 
 class AWEVORACharacter;
 class AWEVORAPlaygroundTarget;
+class AWEVORALocalizedPlaygroundTarget;
 
 /** Authored trial settings and repeatable reset. Only exists in the independent playground map. */
 UCLASS(Blueprintable)
@@ -13,6 +14,13 @@ class WEVORA_API AWEVORACombatPlayground : public AActor
 	GENERATED_BODY()
 public:
 	AWEVORACombatPlayground();
+	/** Runtime sample keeps all existing saved maps/Blueprint assets unchanged. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Playground|Localized")
+	bool bSpawnLocalizedSample = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Playground|Localized")
+	FTransform LocalizedSampleTransform = FTransform(FRotator::ZeroRotator, FVector(1200,600,300));
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Playground|Localized")
+	TSubclassOf<AWEVORALocalizedPlaygroundTarget> LocalizedSampleClass;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Playground|Field")
 	FTransform PlayerStart = FTransform(FRotator::ZeroRotator, FVector(0, 0, 120));
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Playground|Field")
