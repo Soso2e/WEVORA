@@ -12,7 +12,7 @@ FWEVORALocalReactionResult WEVORALocalReactions::Solve(const UWEVORAZoneProfile&
 		const FVector Impact = Owner.GetActorTransform().TransformPosition(Input.LocalImpact);
 		for (const FWEVORALocalReactionRule& Rule : Rules.Rules)
 		{
-			if (Rule.Trigger != Input.Element || Rule.OutputStatus.IsNone()) { continue; }
+			if (Rule.Trigger != Input.Element || !Rule.IsUsable()) { continue; }
 			for (const FWEVORALocalStatus& Seed : Snapshot)
 			{
 				const FVector SeedPosition = Zones.GetZonePosition(Seed.Zone, &Owner);
@@ -44,7 +44,8 @@ FWEVORALocalReactionResult WEVORALocalReactions::Solve(const UWEVORAZoneProfile&
 						else
 						{
 							FWEVORALocalStatus& Previous = Result.Applications[Existing];
-							const bool bPrefer = Proposal.Intensity > Previous.Intensity || (Proposal.Intensity == Previous.Intensity
+							// Numeric fields merge independently; attribution follows the retained strongest DPS.
+							const bool bPrefer = Proposal.DamagePerSecond > Previous.DamagePerSecond || (Proposal.DamagePerSecond == Previous.DamagePerSecond
 								&& (Path < Result.Paths[Existing] || (Path == Result.Paths[Existing]
 								&& GetPathNameSafe(Proposal.Source.Get()) < GetPathNameSafe(Previous.Source.Get()))));
 							const float Intensity = FMath::Max(Previous.Intensity, Proposal.Intensity);

@@ -7,6 +7,13 @@
 #include "Spell/WEVORASpellVolume.h"
 #include "Playground/WEVORALocalizedPlaygroundTarget.h"
 #include "Playground/WEVORACombatPlayground.h"
+#include "Spell/WEVORASpellCastComponent.h"
+#include "WEVORACharacter.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "PhysicsEngine/PhysicsAsset.h"
+#include "PhysicsEngine/SkeletalBodySetup.h"
+#include <limits>
 #include "AI/WEVORAHealthComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/DamageType.h"
@@ -259,6 +266,23 @@ bool FLocalOrderingTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("Wind never adds direct damage"), Health->Health, 75.0f);
 		TestTrue(TEXT("Multiple reactions use one snapshot, no amplification chain"), FMath::IsNearlyEqual(Local->GetRemaining(TEXT("Burning")), 3.9f, 0.0001f));
 	}
+	for (bool Reverse : {false, true})
+	{
+		Health->ResetHealth(); Receiver->ReceiveSpell(Fire, Hand, nullptr, nullptr);
+		for (int32 Index = 0; Index < 129; ++Index)
+		{
+			const int32 I = Reverse ? 128 - Index : Index;
+			FWEVORASpellData Event = Wind; Event.Power = I == 128 ? 5 : 1;
+			FHitResult Contact = Hand; Contact.ImpactPoint.X += I * 0.01;
+			Local->QueueReaction(Event, Contact);
+		}
+		Local->CommitReactions();
+		const FWEVORALocalStatus* Strongest = Local->States.FindByPredicate([](const FWEVORALocalStatus& S) { return S.Zone == TEXT("RightHand"); });
+		if (TestNotNull(TEXT("Overload keeps hand"), Strongest))
+		{
+			TestTrue(TEXT("129 inputs keep strongest result in either order"), FMath::IsNearlyEqual(Strongest->Intensity, 5.75f, 0.0001f));
+		}
+	}
 	Health->ResetHealth();
 	AWEVORASpellProjectile* Delivery = Scene.World->SpawnActor<AWEVORASpellProjectile>();
 	FWEVORASpellLaunch Launch; Delivery->InitializeSpell(Launch);
@@ -305,6 +329,8 @@ bool FLocalProjectileIntegrationTest::RunTest(const FString& Parameters)
 	AWEVORALocalizedPlaygroundTarget* Target = Scene.World->SpawnActor<AWEVORALocalizedPlaygroundTarget>(FVector(1000,0,500), FRotator::ZeroRotator);
 	UWEVORALocalizedStatusComponent* Local = Target->LocalStatuses;
 	TestEqual(TEXT("Seven additional colliders plus existing torso"), Target->ZoneColliders.Num(), 7);
+	TestNotNull(TEXT("Sample uses editable saved Zone DataAsset"), Local->Profile.Get());
+	TestNotNull(TEXT("Sample uses editable saved Reaction DataAsset"), Local->ReactionProfile.Get());
 	auto Shoot = [&](EWEVORASpellElement Element, FName Zone)
 	{
 		const FVector Position = Local->GetProfile()->GetZonePosition(Zone, Target);
@@ -386,6 +412,153 @@ bool FLocalVolumeIntegrationTest::RunTest(const FString& Parameters)
 	{
 		TestEqual(TEXT("Gameplay colliders remain query-only"), Collider->GetCollisionEnabled(), ECollisionEnabled::QueryOnly);
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLocalPhysicsBodyResolverTest, "WEVORA.Localized.PhysicsAssetHitNormalization",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FLocalPhysicsBodyResolverTest::RunTest(const FString& Parameters)
+{
+	FLocalizedWorld Scene;
+	AActor* Owner = Scene.World->SpawnActor<AActor>();
+	USkeletalMeshComponent* Mesh = NewObject<USkeletalMeshComponent>(Owner, TEXT("TestRig"));
+	UPhysicsAsset* Physics = NewObject<UPhysicsAsset>();
+	USkeletalBodySetup* Body = NewObject<USkeletalBodySetup>(Physics); Body->BoneName = TEXT("mgear_hand_R");
+	Physics->SkeletalBodySetups.Add(Body); Physics->UpdateBodySetupIndexMap();
+	Mesh->SetPhysicsAsset(Physics); // A resolver test needs no model or physics simulation.
+	UWEVORAZoneProfile* Profile = NewObject<UWEVORAZoneProfile>();
+	Profile->BodyToZone.Add(Body->BoneName, TEXT("RightHand"));
+	FHitResult Hit(Owner, Mesh, FVector::ZeroVector, FVector::UpVector); Hit.BoneName = Body->BoneName;
+	TestEqual(TEXT("PhysicsAsset BoneName normalized via body mapping"), Profile->ResolveHit(Hit, Owner), FName(TEXT("RightHand")));
+	Hit.BoneName = NAME_None; Hit.Item = 0;
+	TestEqual(TEXT("Overlap body index normalized"), Profile->ResolveHit(Hit, Owner), FName(TEXT("RightHand")));
+	Hit.Item = 500;
+	TestEqual(TEXT("Invalid body index safely ignored"), Profile->ResolveHit(Hit, Owner), NAME_None);
+	Hit.Item = 0; Hit.BoneName = TEXT("not_in_physics");
+	TestEqual(TEXT("Unknown explicit bone must not reuse unrelated body index"), Profile->ResolveHit(Hit, Owner), NAME_None);
+	Profile->BoneToZone.Add(Body->BoneName, TEXT("LeftHand")); Hit.BoneName = Body->BoneName;
+	TestEqual(TEXT("Explicit bone mapping wins over body mapping"), Profile->ResolveHit(Hit, Owner), FName(TEXT("LeftHand")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLocalSavedBlueprintTest, "WEVORA.Localized.SavedBlueprintNormalChargeAndAllDeliveries",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FLocalSavedBlueprintTest::RunTest(const FString& Parameters)
+{
+	FLocalizedWorld Scene;
+	UClass* PlayerClass = LoadClass<AWEVORACharacter>(nullptr, TEXT("/Game/WEVORA/Playground/BP_PlaygroundPlayer.BP_PlaygroundPlayer_C"));
+	if (!TestNotNull(TEXT("Saved Playground Blueprint"), PlayerClass)) { return false; }
+	AWEVORACharacter* Player = Scene.World->SpawnActor<AWEVORACharacter>(PlayerClass, FVector(-2000,0,2000), FRotator::ZeroRotator);
+	AWEVORALocalizedPlaygroundTarget* Target = Scene.World->SpawnActor<AWEVORALocalizedPlaygroundTarget>(FVector(1000,0,500), FRotator::ZeroRotator);
+	Target->HealthComponent->MaxHealth = 1000;
+	const TArray<EWEVORAGesture> Gestures{EWEVORAGesture::Thrust, EWEVORAGesture::Sweep, EWEVORAGesture::Circle, EWEVORAGesture::Slam};
+	for (EWEVORASpellElement Element : {EWEVORASpellElement::Fire, EWEVORASpellElement::Wind, EWEVORASpellElement::Lightning})
+	{
+		for (EWEVORAGesture Gesture : Gestures)
+		{
+			for (float Charge : {0.0f, 1.0f})
+			{
+				Target->ResetTarget();
+				FWEVORASpellContext Context; Context.Element = Element; Context.Gesture = Gesture;
+				Context.ChargeAlpha = Charge; Context.GestureMagnitude = Gesture == EWEVORAGesture::Thrust ? 0 : 20;
+				FWEVORASpellLaunch Launch;
+				if (!TestTrue(TEXT("Blueprint resolves normal/charge and 4 shapes"), Player->SpellCastComponent->ResolveCastLaunch(Context, Launch))) { return false; }
+				const FVector Hand = Target->LocalStatuses->GetProfile()->GetZonePosition(TEXT("RightHand"), Target);
+				if (Element == EWEVORASpellElement::Wind)
+				{
+					FWEVORASpellData Fire;
+					Target->SpellReactionComponent->ReceiveSpell(Fire, Scene.Hit(Target->LocalStatuses, TEXT("RightHand")), nullptr, Player);
+				}
+				Launch.Spell.Direction = Launch.Direction = FVector::ForwardVector;
+				const bool Projectile = Launch.Spell.Delivery == EWEVORASpellDelivery::Projectile;
+				UClass* DeliveryClass = Projectile ? Player->SpellCastComponent->ProjectileClass.Get()
+					: Player->SpellCastComponent->DeliveryClasses.FindRef(Launch.Spell.Delivery).Get();
+				if (!TestNotNull(TEXT("Concrete delivery exists"), DeliveryClass)) { return false; }
+				const FVector Position = Projectile ? Hand - FVector(300,0,0)
+					: Launch.Spell.Delivery == EWEVORASpellDelivery::Sweep ? Target->GetActorLocation() - FVector(300,0,0) : Target->GetActorLocation();
+				const FTransform Transform(FRotator::ZeroRotator, Position);
+				AWEVORASpellDelivery* Delivery = Scene.World->SpawnActorDeferred<AWEVORASpellDelivery>(DeliveryClass, Transform, Player, Player,
+					ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+				Delivery->bLogEvents = false; Delivery->InitializeSpell(Launch); Delivery->FinishSpawning(Transform);
+				Scene.Step(Projectile ? 0.3f : 0.05f);
+				TestTrue(TEXT("Actual delivery reached localized target"), Player->SpellCastComponent->LastImpact.Target == Target);
+				const float ExpectedDamage = Element == EWEVORASpellElement::Wind ? 0 : 25 * Launch.Spell.Power;
+				TestTrue(TEXT("Exactly one direct damage contribution per target"), FMath::IsNearlyEqual(Player->SpellCastComponent->LastImpact.DirectDamage, ExpectedDamage, 0.005f));
+				if (Element == EWEVORASpellElement::Fire)
+				{
+					TestTrue(TEXT("Fire delivery applies local state"), !Target->LocalStatuses->States.IsEmpty());
+					TestEqual(TEXT("No legacy duplicate burn"), Target->SpellReactionComponent->BurningRemaining, 0.0f);
+				}
+				else if (Element == EWEVORASpellElement::Wind)
+				{
+					TestTrue(TEXT("Every Wind shape can spread hand fire"), Target->LocalStatuses->HasStatus(TEXT("Torso"), TEXT("Burning")));
+					TestTrue(TEXT("Every Wind shape keeps its displacement"), Target->SpellReactionComponent->IsDisplaced() || Target->GetActorLocation().X > 1000);
+				}
+				else { TestTrue(TEXT("Lightning adds no new status"), Target->LocalStatuses->States.IsEmpty()); }
+				if (IsValid(Delivery)) { Delivery->Destroy(); }
+				Player->SpellCastComponent->ResetFeedback();
+			}
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLocalRuleOrderTest, "WEVORA.Localized.RuleOrderAttributionAndInvalidValues",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FLocalRuleOrderTest::RunTest(const FString& Parameters)
+{
+	FLocalizedWorld Scene; UWEVORALocalizedStatusComponent* Local = Scene.Receiver();
+	Local->ReactionProfile = NewObject<UWEVORALocalReactionProfile>();
+	FWEVORALocalReactionRule Additional; Additional.IntensityMultiplier = 1.4f; Additional.DurationMultiplier = 1.8f; Additional.MaxHops = 1;
+	Local->ReactionProfile->Rules.Add(Additional);
+	FWEVORASpellData Wind; Wind.Element = EWEVORASpellElement::Wind;
+	TArray<FWEVORALocalStatus> First;
+	for (bool Reverse : {false, true})
+	{
+		Local->ResetStatuses();
+		if (Reverse) { Swap(Local->ReactionProfile->Rules[0], Local->ReactionProfile->Rules[1]); }
+		FWEVORALocalStatus S; S.Zone = TEXT("RightHand"); Local->ApplyStatus(S);
+		Local->QueueReaction(Wind, Scene.Hit(Local, TEXT("RightHand"))); Local->CommitReactions();
+		if (!Reverse) { First = Local->States; }
+		TestEqual(TEXT("Rule reordering has equal state count"), Local->States.Num(), First.Num());
+		for (int32 I = 0; I < First.Num(); ++I)
+		{
+			TestEqual(TEXT("Rule reordering has equal intensity"), Local->States[I].Intensity, First[I].Intensity);
+			TestEqual(TEXT("Rule reordering has equal duration"), Local->States[I].Remaining, First[I].Remaining);
+			TestEqual(TEXT("Rule reordering has equal DPS"), Local->States[I].DamagePerSecond, First[I].DamagePerSecond);
+		}
+	}
+	Local->ResetStatuses();
+	FWEVORALocalStatus Strong; Strong.Zone = TEXT("RightHand"); Strong.DamagePerSecond = 10;
+	AActor* StrongSource = Scene.World->SpawnActor<AActor>(); Strong.Source = StrongSource;
+	Local->ApplyStatus(Strong);
+	FWEVORALocalStatus Weak = Strong; Weak.Source = Scene.World->SpawnActor<AActor>(); Weak.DamagePerSecond = 1;
+	Local->ApplyStatus(Weak); TestTrue(TEXT("Weak refresh retains strong DoT attribution"), Local->States[0].Source == StrongSource);
+	Local->ResetStatuses(); Local->ReactionProfile->Rules = {FWEVORALocalReactionRule()};
+	Local->ApplyStatus(Strong);
+	Weak.Zone = TEXT("Torso"); Weak.Intensity = 5; Local->ApplyStatus(Weak);
+	Local->QueueReaction(Wind, Scene.Hit(Local, TEXT("RightArm"))); Local->CommitReactions();
+	const FWEVORALocalStatus* Arm = Local->States.FindByPredicate([](const FWEVORALocalStatus& S) { return S.Zone == TEXT("RightArm"); });
+	if (TestNotNull(TEXT("Both neighboring seeds reach arm"), Arm))
+	{
+		TestTrue(TEXT("Merged source follows highest DPS, independent of intensity"), Arm->Source == StrongSource);
+	}
+	Local->ResetStatuses(); Local->ApplyStatus(Strong);
+	FWEVORALocalStatus Invalid = Strong; Invalid.Intensity = std::numeric_limits<float>::quiet_NaN();
+	TestFalse(TEXT("NaN state rejected"), Local->ApplyStatus(Invalid));
+	Invalid = Strong; Invalid.Remaining = -1; TestFalse(TEXT("Negative lifetime rejected"), Local->ApplyStatus(Invalid));
+	const float HealthBefore = Local->GetOwner()->FindComponentByClass<UWEVORAHealthComponent>()->Health;
+	Local->AdvanceStatuses(std::numeric_limits<float>::quiet_NaN());
+	TestEqual(TEXT("Invalid delta cannot damage HP"), Local->GetOwner()->FindComponentByClass<UWEVORAHealthComponent>()->Health, HealthBefore);
+	Local->ReactionProfile->Rules.SetNum(1); Local->ReactionProfile->Rules[0].EffectRadius = std::numeric_limits<float>::infinity();
+	Local->QueueReaction(Wind, Scene.Hit(Local, TEXT("RightHand"))); Local->CommitReactions();
+	TestEqual(TEXT("Invalid rule cannot propagate"), Local->States.Num(), 1);
+	Invalid = Strong; Invalid.Intensity = 1000; Invalid.Accumulation = 1000; Invalid.Remaining = 1000; Invalid.DamagePerSecond = 1000;
+	Invalid.Policy = EWEVORAStatusPolicy::Replace; Local->ApplyStatus(Invalid);
+	TestEqual(TEXT("Intensity capped"), Local->States[0].Intensity, Local->MaxIntensity);
+	TestEqual(TEXT("Accumulation capped"), Local->States[0].Accumulation, Local->MaxAccumulation);
+	TestEqual(TEXT("Lifetime capped"), Local->States[0].Remaining, Local->MaxDuration);
+	TestEqual(TEXT("DPS capped"), Local->States[0].DamagePerSecond, Local->MaxDamagePerSecond);
 	return true;
 }
 #endif

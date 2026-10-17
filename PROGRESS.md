@@ -279,20 +279,37 @@ Cookでは名前解決警告、Playerではドライバーに伴うTSR 16-bit無
 - 実描画/PIEの見た目、ネットワーク配信、Playerビルドは未確認。
 
 ## 2026-10-17 Localized Reactions Stage A
+
 - PR #8 head 6fb59f4からfeature/localized-elemental-reactionsを作成。PR #8/main/既存Assetは変更しない。
 - Zone Profile/Resolver/隣接graphを追加。FName IDとBone/Physics Body/Collider設定を分離。未知BoneはNone。
 - UE5.8 Editorビルド成功。着手前33/33、Stage A 34/34成功。設計: Docs/LocalizedElementalReactions.md。
 
 ## Localized Reactions Stage B
+
 - 汎用局所Statusコンポーネント、4Policy、期限・強度・蓄積・Source/時刻、最大DPS包絡線の区間積分を追加。
 - Healthの死亡/reset通知で即時解除。UE5.8 Editorビルド成功、全36/36テスト成功。30/60/120fpsと4秒hitchで20HPの同一結果を検証。
 
 ## Localized Reactions Stage C
+
 - FireをHit Zoneへ付与し、Windを同フレームsnapshotで解決。隣接・距離・hop・強度とDataAsset Ruleで伝播を制限。提案mergeで循環/同イベント増幅を防止。
 - Deliveryのイベント重複防止とVolumeの複数Zone batchを追加。直撃とWind外力は対象ごと一回、全身/局所燃焼は排他。
 - Editorビルド成功、全40/40成功。Fire手→Wind→腕/胴、逆順入力、循環、距離、局所/全身移行、複数Zone/重複callbackを検証。初回は3.9秒比較のfloat許容値が厳しすぎたため0.0001秒に修正。
 
 ## Localized Reactions Stage D
+
 - 保存Assetを変更せず6体目の仮8Zone対象をruntime生成。7Collider+既存Torso、局所色変化、F2でZone/寿命/強度/蓄積/経路/HPを表示。既存5対象は維持。
 - Editorビルド成功、全42/42成功。実Projectileの右手Fire→隣接腕Wind→胴体伝播/外力、実Volumeの手のみ/8Zone同時命中、死亡復活/全体reset、F2判定不変を確認。
 
+## Localized Reactions Stage E（最終）
+
+- 調整用Zone/FireWind DataAssetを新規2件作成し、仮対象へ接続。作成スクリプトは既存名への上書きを拒否。既存Map/Blueprint/Configは保存し直さない。
+- 同frameの129入力でもPower等による正規化で順序不変、状態batch確定後の通知、弱いrefresh/複数seedでの最大DPS Source帰属、不正Ruleの拒否を補強。
+- 最終UE5.8.3 Win64 Development Editor/Playerビルド成功。全45/45成功（既存33の名前・実装を維持、新規12）、未実行・テスト警告・エラー0。BP解決の3属性×4Shape×通常/最大Chargeの24組合せを実配送で検証。
+- 全Blueprint349件（/Game55件）コンパイル成功、エラー/警告0。2マップCook/Stage/Pak/Package/Archive成功（最終UAT 64秒、終了0）。最終Archive exeはBinaries版とSHA-256一致。
+- 最終PackageのD3D12/SM6でPlaygroundロード、452フレーム・終了0。F2パネル/仮Zone対象の初期ScreenshotをDocs/Images/LocalizedZones.pngへ保存。初期Trial 0であり、実入力や延焼中の表示の証明にしない。
+- 既存Content/Config770ファイルの前後SHA-256一致、新規DataAssetを含め772件も一致。最終Cook後に既存Content765件をbaseのLFS SHA-256と照合、Config差分なし。LFS fsck/diffチェック/PowerShell構文検証成功。
+- Engine非推奨/推奨MSVC差、既存RigVM EditorDomain循環、NVIDIA TSRドライバー/初回PSOのメッセージは残る。自動テスト/Blueprintの警告とは区別する。
+- Raw結果: Saved/Automation/LocalizedFinal/index.json。共有用: Docs/LocalizedElementalAutomationResults.json。ログ: Saved/Logs/LocalizedFinal*。配布物: Saved/LocalizedReactionsPlayer/Windows/WEVORA.exe。
+- 調整値・PIE10手順・責務/互換性/未実装: Docs/LocalizedElementalReactions.md。再検証: Scripts/validate_localized_reactions.ps1（-SkipPlayer対応）。ROADMAP23〜34とGAME_DESIGNへ試作範囲を反映。
+- 人間の実入力/飛行射撃/狙いやすさ/動的な延焼表示/30・60・120fps体感/面白さと正式Skeleton/mGear衝突は未確認。水/Lightning新状態/地形伝播/Replication/正式演出は実装しない。
+- PR #8はDraft/open、head 6fb59f4のまま。main・PR #8は変更/マージせず、本ブランチだけをStacked Draft PRにする。

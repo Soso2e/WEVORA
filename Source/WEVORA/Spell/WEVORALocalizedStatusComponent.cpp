@@ -75,6 +75,13 @@ bool UWEVORALocalizedStatusComponent::ApplyStatus(const FWEVORALocalStatus& Appl
 	{ return S.Zone == Next.Zone && S.Type == Next.Type; });
 	if (Previous)
 	{
+		// Refreshing with a weaker hit must not reattribute the stronger retained DoT to that hit.
+		if (Next.Policy != EWEVORAStatusPolicy::Replace && (Previous->DamagePerSecond > Next.DamagePerSecond
+			|| (Previous->DamagePerSecond == Next.DamagePerSecond
+				&& GetPathNameSafe(Previous->Source.Get()) < GetPathNameSafe(Next.Source.Get()))))
+		{
+			Next.Source = Previous->Source; Next.Instigator = Previous->Instigator;
+		}
 		switch (Next.Policy)
 		{
 		case EWEVORAStatusPolicy::Replace: break;
@@ -106,8 +113,19 @@ bool UWEVORALocalizedStatusComponent::ApplyStatus(const FWEVORALocalStatus& Appl
 	States.Sort([](const FWEVORALocalStatus& A, const FWEVORALocalStatus& B)
 	{ return A.Zone == B.Zone ? A.Type.LexicalLess(B.Type) : A.Zone.LexicalLess(B.Zone); });
 	SetComponentTickEnabled(true);
-	OnStatesChanged.Broadcast();
+	if (!bApplyingBatch) { OnStatesChanged.Broadcast(); }
 	return true;
+}
+
+bool UWEVORALocalizedStatusComponent::ApplyStatusBatch(const TArray<FWEVORALocalStatus>& Applications)
+{
+	bool bApplied = false;
+	{
+		TGuardValue<bool> Guard(bApplyingBatch, true);
+		for (const FWEVORALocalStatus& S : Applications) { bApplied |= ApplyStatus(S); }
+	}
+	if (bApplied && !bApplyingBatch) { OnStatesChanged.Broadcast(); }
+	return bApplied;
 }
 
 void UWEVORALocalizedStatusComponent::RemoveStatus(FName Zone, FName Type)
@@ -153,7 +171,7 @@ void UWEVORALocalizedStatusComponent::AdvanceStatuses(float Seconds)
 	LastPeriodicDamage = float(Damage);
 	// Final HP mutation goes through the same Health receiver as direct damage.
 	if (Damage > 0) { UGameplayStatics::ApplyDamage(GetOwner(), float(Damage), Instigator.Get(), Source.Get(), UDamageType::StaticClass()); }
-	SetComponentTickEnabled(!States.IsEmpty());
+	SetComponentTickEnabled(!States.IsEmpty() || !PendingInputs.IsEmpty());
 	OnStatesChanged.Broadcast();
 }
 
@@ -177,7 +195,24 @@ bool UWEVORALocalizedStatusComponent::QueueReaction(const FWEVORASpellData& Spel
 	// Reject exact duplicate contacts inside a batch, rather than multiplying propagation.
 	const bool Duplicate = PendingInputs.ContainsByPredicate([&](const FWEVORALocalReactionInput& P)
 	{ return P.Zone == Input.Zone && P.Element == Input.Element && P.Power == Input.Power && P.LocalImpact == Input.LocalImpact; });
-	if (!Duplicate && PendingInputs.Num() < 128) { PendingInputs.Add(Input); }
+	if (!Duplicate)
+	{
+		PendingInputs.Add(Input);
+		if (PendingInputs.Num() > 128)
+		{
+			// Even overload must be order-independent. Keep a canonical strongest 128, not the first 128 callbacks.
+			PendingInputs.Sort([](const FWEVORALocalReactionInput& A, const FWEVORALocalReactionInput& B)
+			{
+				if (A.Power != B.Power) { return A.Power > B.Power; }
+				if (A.Zone != B.Zone) { return A.Zone.LexicalLess(B.Zone); }
+				if (A.Element != B.Element) { return uint8(A.Element) < uint8(B.Element); }
+				if (A.LocalImpact.X != B.LocalImpact.X) { return A.LocalImpact.X < B.LocalImpact.X; }
+				if (A.LocalImpact.Y != B.LocalImpact.Y) { return A.LocalImpact.Y < B.LocalImpact.Y; }
+				return A.LocalImpact.Z < B.LocalImpact.Z;
+			});
+			PendingInputs.SetNum(128);
+		}
+	}
 	SetComponentTickEnabled(true);
 	return true;
 }
@@ -192,6 +227,5 @@ void UWEVORALocalizedStatusComponent::CommitReactions()
 	// Every event/rule reads the same immutable snapshot. New propagation never becomes a seed in this batch.
 	const FWEVORALocalReactionResult Result = WEVORALocalReactions::Solve(*GetProfile(), *Rules, *GetOwner(), States, Batch);
 	LastPropagationPaths = Result.Paths; LastPropagationPaths.Sort();
-	for (const FWEVORALocalStatus& S : Result.Applications) { ApplyStatus(S); }
-	OnStatesChanged.Broadcast();
+	if (!ApplyStatusBatch(Result.Applications)) { OnStatesChanged.Broadcast(); }
 }

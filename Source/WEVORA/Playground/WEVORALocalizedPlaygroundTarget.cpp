@@ -12,6 +12,10 @@ AWEVORALocalizedPlaygroundTarget::AWEVORALocalizedPlaygroundTarget()
 	bShowBurningEffect = false; // Whole-body flame presentation would misrepresent a local state.
 	LocalStatuses = CreateDefaultSubobject<UWEVORALocalizedStatusComponent>(TEXT("LocalStatuses"));
 	LocalStatuses->bUsePrototypeProfile = true;
+	static ConstructorHelpers::FObjectFinder<UWEVORAZoneProfile> Zones(TEXT("/Game/WEVORA/Localized/DA_PrototypeZones.DA_PrototypeZones"));
+	static ConstructorHelpers::FObjectFinder<UWEVORALocalReactionProfile> Reactions(TEXT("/Game/WEVORA/Localized/DA_FireWindReactions.DA_FireWindReactions"));
+	LocalStatuses->Profile = Zones.Object;
+	LocalStatuses->ReactionProfile = Reactions.Object;
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Glow(TEXT("/Game/WEVORA/Effects/M_AttackEffect.M_AttackEffect"));
 	ZoneMaterial = Glow.Object;

@@ -83,6 +83,9 @@ public:
 	float GetRemaining(FName Type) const;
 	UFUNCTION(BlueprintCallable, Category="Localized")
 	bool ApplyStatus(const FWEVORALocalStatus& Application);
+	/** Observers receive one notification after the complete batch is committed. */
+	UFUNCTION(BlueprintCallable, Category="Localized")
+	bool ApplyStatusBatch(const TArray<FWEVORALocalStatus>& Applications);
 	UFUNCTION(BlueprintCallable, Category="Localized")
 	void RemoveStatus(FName Zone, FName Type);
 	UFUNCTION(BlueprintCallable, Category="Localized")
@@ -101,4 +104,5 @@ protected:
 	bool CanMutate() const;
 private:
 	TArray<FWEVORALocalReactionInput> PendingInputs;
+	bool bApplyingBatch = false;
 };

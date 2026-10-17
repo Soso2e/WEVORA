@@ -44,6 +44,15 @@ struct WEVORA_API FWEVORALocalReactionRule
 	float AttenuationPerHop = 0.8f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Reaction", meta=(ClampMin="0"))
 	float DurationMultiplier = 1.3f;
+	bool IsUsable() const
+	{
+		for (float Value : {MinimumIntensity, SeedRadius, EffectRadius, MaxEdgeDistance, MaxPathDistance,
+			IntensityMultiplier, AttenuationPerHop, DurationMultiplier})
+		{
+			if (!FMath::IsFinite(Value) || Value < 0) { return false; }
+		}
+		return !RequiredStatus.IsNone() && !OutputStatus.IsNone();
+	}
 };
 
 /** Add trigger/status/output rules without adding element-specific code paths. */

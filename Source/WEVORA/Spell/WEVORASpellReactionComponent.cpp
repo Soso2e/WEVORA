@@ -139,6 +139,7 @@ bool UWEVORASpellReactionComponent::ReceiveSpellBatch(const FWEVORASpellData& Sp
 			if (Local)
 			{
 				TSet<FName> AppliedZones;
+				TArray<FWEVORALocalStatus> Applications;
 				for (const FHitResult& ZoneHit : Hits)
 				{
 					const FName Zone = Local->GetProfile()->ResolveHit(ZoneHit, Owner);
@@ -148,8 +149,9 @@ bool UWEVORASpellReactionComponent::ReceiveSpellBatch(const FWEVORASpellData& Sp
 					Status.Intensity = Spell.Power; Status.Accumulation = Spell.Power;
 					Status.DamagePerSecond = Magnitude; Status.Remaining = Effect.Duration;
 					Status.Instigator = Instigator; Status.Source = Causer && Causer->GetOwner() ? Causer->GetOwner() : Causer;
-					bApplied |= Local->ApplyStatus(Status);
+					Applications.Add(Status);
 				}
+				bApplied |= Local->ApplyStatusBatch(Applications);
 				break;
 			}
 			if (Effect.Duration > 0.0f)

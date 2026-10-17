@@ -1,0 +1,331 @@
+{
+  "date": "2026-10-17",
+  "engine": "Unreal Engine 5.8.3",
+  "branch": "feature/localized-elemental-reactions",
+  "base": "feature/combat-playground",
+  "baseCommit": "6fb59f4cab5c46069d5401f4f79705a0da945378",
+  "suite": "WEVORA.",
+  "mode": "NullRHI automation: collision, state, health and delivery; no human input/game-feel verification",
+  "succeeded": 45,
+  "failed": 0,
+  "notRun": 0,
+  "baselineRetained": 33,
+  "newTests": 12,
+  "tests": [
+    {
+      "fullTestPath": "WEVORA.AI.TargetAndAttack",
+      "state": "Success",
+      "duration": 0.012528698891401291,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Design.BlueprintRules",
+      "state": "Success",
+      "duration": 0.017514199018478394,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Localized.DamageIntegralAndFrameRates",
+      "state": "Success",
+      "duration": 0.00952160358428955,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Localized.FireWindCombatLoop",
+      "state": "Success",
+      "duration": 0.01065089926123619,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Localized.FrameBatchOrderAndDuplicateDelivery",
+      "state": "Success",
+      "duration": 0.010029502213001251,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Localized.LegacyBurningCompatibility",
+      "state": "Success",
+      "duration": 0.010538101196289062,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Localized.PhysicsAssetHitNormalization",
+      "state": "Success",
+      "duration": 0.009578198194503784,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Localized.RealProjectileFireWindAndRespawn",
+      "state": "Success",
+      "duration": 0.03172469884157181,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Localized.RealVolumeMultiZoneAndDebugInvariance",
+      "state": "Success",
+      "duration": 0.011596400290727615,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Localized.Resolver",
+      "state": "Success",
+      "duration": 0.010352499783039093,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Localized.RuleOrderAttributionAndInvalidValues",
+      "state": "Success",
+      "duration": 0.010711301118135452,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Localized.SavedBlueprintNormalChargeAndAllDeliveries",
+      "state": "Success",
+      "duration": 0.13275979459285736,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Localized.StatusPoliciesAndLifecycle",
+      "state": "Success",
+      "duration": 0.010518398135900497,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Localized.TopologyDistanceAndCycles",
+      "state": "Success",
+      "duration": 0.00994889810681343,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Movement.AirJumpMana",
+      "state": "Success",
+      "duration": 0.015512201935052872,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Movement.BurstAndBrake",
+      "state": "Success",
+      "duration": 0.20079320669174194,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Movement.HeldHoverAndNaturalFall",
+      "state": "Success",
+      "duration": 0.3237757086753845,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Movement.JumpAndFall",
+      "state": "Success",
+      "duration": 0.07210379838943481,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Movement.ManaRecovery",
+      "state": "Success",
+      "duration": 0.008574500679969788,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Movement.PartialBurstMana",
+      "state": "Success",
+      "duration": 0.06052429974079132,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Movement.PowerAndPriority",
+      "state": "Success",
+      "duration": 0.06741909682750702,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Playground.ActualCastRouting",
+      "state": "Success",
+      "duration": 0.026764798909425735,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Playground.BallisticsAndCharge",
+      "state": "Success",
+      "duration": 0.0204974003136158,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Playground.ChargeAndImpactFeedback",
+      "state": "Success",
+      "duration": 0.03263679891824722,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Playground.FullTrialReset",
+      "state": "Success",
+      "duration": 0.021392300724983215,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Playground.LightningAssistVisibility",
+      "state": "Success",
+      "duration": 0.016671698540449142,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Playground.ManualLeadShooting",
+      "state": "Success",
+      "duration": 0.05136849731206894,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Playground.MotionAndWind",
+      "state": "Success",
+      "duration": 0.02824850007891655,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Playground.ResetAndRespawn",
+      "state": "Success",
+      "duration": 0.02408050000667572,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Playground.SavedMapAndShapeData",
+      "state": "Success",
+      "duration": 0.027879096567630768,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Playground.SweepFieldAndOcclusion",
+      "state": "Success",
+      "duration": 0.038114700466394424,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.AirborneCastToDamage",
+      "state": "Success",
+      "duration": 0.12132979929447174,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.AttackEffects",
+      "state": "Success",
+      "duration": 0.03676760196685791,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.CancelWallsAndLifetime",
+      "state": "Success",
+      "duration": 0.04625219851732254,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.DataResolution",
+      "state": "Success",
+      "duration": 0.014422297477722168,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.DisplacementWallsAndAI",
+      "state": "Success",
+      "duration": 0.03617579862475395,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.LightningHit",
+      "state": "Success",
+      "duration": 0.18608209490776062,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.ReactionRulesAndStates",
+      "state": "Success",
+      "duration": 0.08710210025310516,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.SimpleAttack",
+      "state": "Success",
+      "duration": 0.08125120401382446,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.TPSAim",
+      "state": "Success",
+      "duration": 0.05683930218219757,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Combat.TPSCoverPreview",
+      "state": "Success",
+      "duration": 0.04015509784221649,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.Gestures",
+      "state": "Success",
+      "duration": 0.008723698556423187,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.HandAttachment",
+      "state": "Success",
+      "duration": 0.010029498487710953,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.SelectionEffects",
+      "state": "Success",
+      "duration": 0.008713699877262115,
+      "warnings": 0,
+      "errors": 0
+    },
+    {
+      "fullTestPath": "WEVORA.Spell.StateFlow",
+      "state": "Success",
+      "duration": 0.008519001305103302,
+      "warnings": 0,
+      "errors": 0
+    }
+  ]
+}

@@ -232,3 +232,8 @@ Niagara素材設定後はUser Parameterの反映と、繰り返し操作で表�
 - Map / Blueprintのアセットは変更せず、既存保存済みアセットへのネイティブComponent継承を検証。
 
 攻撃の炎・風・雷エフェクトと命中時の破片の調整方法は [Docs/AttackEffects.md](../../../Docs/AttackEffects.md) を参照。
+
+# 局所反応の拡張
+
+Zone Profileを設定した対象はBurningを`WEVORALocalizedStatusComponent`へ委譲し、Fire→Windで隣接部位へ伝播する。未設定の対象は既存の全身反応を維持する。
+設計・DataAsset・API・仮パラメータ・PIE手順は[LocalizedElementalReactions.md](../../../Docs/LocalizedElementalReactions.md)を参照。
