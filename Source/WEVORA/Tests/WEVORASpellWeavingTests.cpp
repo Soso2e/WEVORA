@@ -51,6 +51,7 @@ bool FWEVORAWeaveTest::RunTest(const FString& Parameters)
 {
 	UWEVORASpellWeavingComponent* C = NewObject<UWEVORASpellWeavingComponent>();
 	C->bLogEvents = false;
+	C->AttackCooldown = 0.0f; // This legacy composition test does not advance world time.
 	C->BeginShape();
 	TestEqual(TEXT("E outside weave ignored"), C->State, EWEVORAWeavingState::Idle);
 	C->BeginWeave(); C->RecordLook(FVector2D(100, 0)); C->BeginShape(); C->EndShape();

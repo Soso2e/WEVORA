@@ -9,9 +9,18 @@
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "UObject/UnrealType.h"
 
 namespace
 {
+// Read the loaded Blueprint's tuning without widening the character's gameplay API.
+float FlightSetting(const AWEVORACharacter* Pilot, FName Name)
+{
+	const FFloatProperty* Property = FindFProperty<FFloatProperty>(Pilot->GetClass(), Name);
+	check(Property);
+	return Property->GetPropertyValue_InContainer(Pilot);
+}
+
 /** Saved project Blueprint, real tick ordering, swept movement and a physical landing surface. */
 struct FFlightWorld
 {
@@ -78,7 +87,7 @@ struct FFlightWorld
 };
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORAJumpTest, "WEVORA.Movement.JumpAndCoast",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORAJumpTest, "WEVORA.Movement.JumpAndFall",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWEVORAJumpTest::RunTest(const FString& Parameters)
 {
@@ -94,9 +103,8 @@ bool FWEVORAJumpTest::RunTest(const FString& Parameters)
 	Scene.Step(1.0f / 60.0f);
 	TestTrue(TEXT("Tap immediately launches upward"), Movement->Velocity.Z > 800.0f);
 	Pilot->DoJumpEnd();
-	const double BeforeAirTap = Movement->Velocity.Z;
 	Pilot->DoJumpStart(); Pilot->DoJumpEnd();
-	TestEqual(TEXT("A second air tap gives no free jump impulse"), Movement->Velocity.Z, BeforeAirTap);
+	TestEqual(TEXT("A second air tap launches upward"), Movement->Velocity.Z, 900.0);
 	float CoastTime = 0.0f;
 	bool bSawFall = false;
 	for (int32 Frame = 0; Frame < 210; ++Frame)
@@ -105,9 +113,9 @@ bool FWEVORAJumpTest::RunTest(const FString& Parameters)
 		if (Pilot->FlightState == EWEVORAFlightState::Coasting) { CoastTime += 1.0f / 60.0f; }
 		bSawFall |= Pilot->FlightState == EWEVORAFlightState::Falling;
 	}
-	TestTrue(TEXT("Apex float and gravity transition last about one second"), CoastTime > 1.2f && CoastTime < 1.5f);
+	TestTrue(TEXT("No input gives no passive apex float"), CoastTime == 0.0f);
 	TestTrue(TEXT("No input eventually restores falling"), bSawFall);
-	TestEqual(TEXT("Tap and passive float use no mana"), Pilot->ManaComponent->Mana, StartMana);
+	TestEqual(TEXT("Unpowered jump and fall use no mana"), Pilot->ManaComponent->Mana, StartMana);
 	TestTrue(TEXT("Actual swept fall lands"), Movement->IsMovingOnGround());
 	TestTrue(TEXT("Landing rests above floor instead of floating"), Pilot->GetActorLocation().Z < 110.0f);
 	return true;
@@ -124,20 +132,18 @@ bool FWEVORAPoweredFlightTest::RunTest(const FString& Parameters)
 	Scene.PutInAir();
 	Pilot->DoMove(0.0f, 1.0f);
 	Scene.Step(0.5f);
-	TestEqual(TEXT("Steering supports altitude"), Pilot->FlightState, EWEVORAFlightState::Hovering);
-	TestTrue(TEXT("Powered hover spends mana per elapsed second"), FMath::IsNearlyEqual(Pilot->ManaComponent->Mana, 96.0f, 0.05f));
-	TestTrue(TEXT("Hover keeps altitude"), FMath::IsNearlyEqual(Pilot->GetActorLocation().Z, 5000.0f, 1.0f));
+	TestEqual(TEXT("Steering keeps falling"), Pilot->FlightState, EWEVORAFlightState::Falling);
+	TestEqual(TEXT("Steering spends no mana"), Pilot->ManaComponent->Mana, 100.0f);
+	TestTrue(TEXT("Steering descends instead of hovering"), Pilot->GetActorLocation().Z < 4900.0f);
+	const float ReleaseMana = Pilot->ManaComponent->Mana;
+	const double ReleaseSpeed = Movement->Velocity.Size2D();
 	Pilot->DoMove(0.0f, 0.0f);
-	Scene.Step(0.1f);
-	TestEqual(TEXT("Brief direction change retains paid support"), Pilot->FlightState, EWEVORAFlightState::Hovering);
-	Scene.Step(0.25f);
-	TestEqual(TEXT("Release enters unpowered coast"), Pilot->FlightState, EWEVORAFlightState::Coasting);
-	const float CoastMana = Pilot->ManaComponent->Mana;
+	Scene.Step(1.0f / 60.0f);
+	TestEqual(TEXT("Release immediately restores falling"), Pilot->FlightState, EWEVORAFlightState::Falling);
+	TestTrue(TEXT("Release preserves planar inertia"), Movement->Velocity.Size2D() > ReleaseSpeed * 0.9f);
 	Scene.Step(0.5f);
-	TestEqual(TEXT("Residual velocity does not spend mana"), Pilot->ManaComponent->Mana, CoastMana);
-	TestTrue(TEXT("Release preserves planar inertia"), Movement->Velocity.Size2D() > 500.0f);
-	Scene.Step(1.0f);
-	TestEqual(TEXT("Passive support expires"), Pilot->FlightState, EWEVORAFlightState::Falling);
+	TestEqual(TEXT("Residual velocity does not spend mana"), Pilot->ManaComponent->Mana, ReleaseMana);
+	TestTrue(TEXT("No input restores natural fall speed"), Movement->Velocity.Z < -500.0f);
 	Pilot->DoMove(1.0f, 0.0f);
 	Pilot->DoAscendStart(); Pilot->DoBrakeStart(); Pilot->DoDescendStart();
 	const float DiveMana = Pilot->ManaComponent->Mana;
@@ -171,23 +177,37 @@ bool FWEVORABurstTest::RunTest(const FString& Parameters)
 	if (!TestNotNull(TEXT("Pilot"), Scene.Pilot)) { return false; }
 	AWEVORACharacter* Pilot = Scene.Pilot;
 	UCharacterMovementComponent* Movement = Pilot->GetCharacterMovement();
-	Scene.PutInAir();
+	// Steering now falls naturally. Leave room to catch the fall before the floor.
+	Scene.PutInAir(10000.0f);
 	Pilot->DoMove(0.0f, 1.0f);
-	Scene.Step(0.6f);
+	Scene.Step(2.4f);
 	const float PreBurstMana = Pilot->ManaComponent->Mana;
+	const double PreBurstSpeed = Movement->Velocity.Size2D();
+	const float CruiseSpeed = FlightSetting(Pilot, TEXT("CruiseSpeed"));
+	const float BurstImpulse = FlightSetting(Pilot, TEXT("BurstImpulse"));
+	const float BurstCap = FlightSetting(Pilot, TEXT("BurstMaxSpeed"));
+	const float BurstDecay = FlightSetting(Pilot, TEXT("BurstSpeedDecay"));
+	TestTrue(TEXT("Burst scenario remains airborne"), Movement->IsFalling());
 	Pilot->DoBurst();
-	TestTrue(TEXT("Stronger burst adds substantial speed"), Movement->Velocity.Size2D() > 2900.0f);
+	const double ExpectedBurstSpeed = FMath::Min(PreBurstSpeed + BurstImpulse, double(BurstCap));
+	TestTrue(TEXT("Burst adds the saved Blueprint impulse up to its cap"),
+		FMath::IsNearlyEqual(Movement->Velocity.Size2D(), ExpectedBurstSpeed, 0.1));
+	TestTrue(TEXT("Burst exceeds cruise speed"), Movement->Velocity.Size2D() > CruiseSpeed);
 	TestTrue(TEXT("Burst spends one mana cost"), FMath::IsNearlyEqual(PreBurstMana - Pilot->ManaComponent->Mana, 12.0f, 0.01f));
 	const float BurstMana = Pilot->ManaComponent->Mana;
 	Pilot->DoBurst();
 	TestEqual(TEXT("Cooldown blocks both burst and repeat cost"), Pilot->ManaComponent->Mana, BurstMana);
 	Scene.Step(1.0f / 60.0f);
-	TestTrue(TEXT("Next movement tick does not clamp boost to cruise"), Movement->Velocity.Size2D() > 2800.0f);
+	TestTrue(TEXT("Next movement tick retains boost above cruise within configured decay"),
+		Movement->Velocity.Size2D() > CruiseSpeed &&
+		Movement->Velocity.Size2D() >= ExpectedBurstSpeed - BurstDecay / 60.0 - 1.0);
 	Scene.Step(0.5f);
 	Pilot->DoBurst();
-	TestTrue(TEXT("Repeated boost respects speed cap"), Movement->Velocity.Size2D() <= 3200.1f);
+	TestTrue(TEXT("Repeated boost respects speed cap"), Movement->Velocity.Size2D() <= BurstCap + 0.1f);
 	Pilot->DoBrakeStart();
-	Scene.Step(1.0f);
+	// Catching the accumulated fall is acceleration-limited, not an instant velocity reset.
+	Scene.Step(3.0f);
+	TestTrue(TEXT("Brake scenario remains airborne instead of resting on floor"), Movement->IsFalling());
 	TestTrue(TEXT("Alt brakes even while steering is held"), Movement->Velocity.Size2D() < 50.0f);
 	TestEqual(TEXT("Alt enables stationary paid hover"), Pilot->FlightState, EWEVORAFlightState::Hovering);
 	TestTrue(TEXT("Stationary hover supports altitude"), FMath::Abs(Movement->Velocity.Z) < 1.0f);
@@ -202,6 +222,148 @@ bool FWEVORABurstTest::RunTest(const FString& Parameters)
 	Scene.Step(4.0f);
 	TestTrue(TEXT("Empty-mana flight lands on floor"), Movement->IsMovingOnGround());
 	TestTrue(TEXT("Mana recovers after landing"), Pilot->ManaComponent->Mana > 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORAHeldHoverTest, "WEVORA.Movement.HeldHoverAndNaturalFall",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORAHeldHoverTest::RunTest(const FString& Parameters)
+{
+	for (const float Delta : {1.0f / 30.0f, 1.0f / 60.0f, 1.0f / 120.0f})
+	{
+		FFlightWorld Scene;
+		if (!TestNotNull(TEXT("Pilot"), Scene.Pilot)) { return false; }
+		AWEVORACharacter* Pilot = Scene.Pilot;
+		UCharacterMovementComponent* Movement = Pilot->GetCharacterMovement();
+		Scene.PutInAir();
+		Scene.Step(0.5f, Delta);
+		const double NaturalFallSpeed = Movement->Velocity.Z;
+		TestTrue(TEXT("Falling without a jump launch has natural gravity"), NaturalFallSpeed < -500.0f);
+		TestEqual(TEXT("Unpowered fall uses no mana"), Pilot->ManaComponent->Mana, 100.0f);
+		Scene.PutInAir();
+		Pilot->DoMove(0.0f, 1.0f);
+		Scene.Step(0.5f, Delta);
+		const float SteeringFallMultiplier = FlightSetting(Pilot, TEXT("SteeringFallMultiplier"));
+		AddInfo(FString::Printf(TEXT("%.0f fps: natural=%.2f steered=%.2f saved multiplier=%.3f"),
+			1.0f / Delta, NaturalFallSpeed, Movement->Velocity.Z, SteeringFallMultiplier));
+		TestTrue(TEXT("Saved steering tuning reduces gravity without removing it"),
+			SteeringFallMultiplier > 0.0f && SteeringFallMultiplier < 1.0f);
+		TestTrue(TEXT("Steering fall follows the saved Blueprint multiplier from rest"),
+			FMath::IsNearlyEqual(Movement->Velocity.Z / NaturalFallSpeed, double(SteeringFallMultiplier), 0.02));
+		TestEqual(TEXT("Steering alone never hovers"), Pilot->FlightState, EWEVORAFlightState::Falling);
+		TestEqual(TEXT("Steering fall spends no mana"), Pilot->ManaComponent->Mana, 100.0f);
+		Pilot->DoJumpStart();
+		TestTrue(TEXT("Jump catches a moving airborne fall"), Movement->Velocity.Z > 800.0f);
+		Scene.Step(0.05f, Delta);
+		const double HeldJumpSpeed = Movement->Velocity.Z;
+		Pilot->DoJumpStart();
+		TestEqual(TEXT("Repeated start while held does not jump again"), Movement->Velocity.Z, HeldJumpSpeed);
+		Pilot->DoJumpEnd();
+		TestTrue(TEXT("Air acceleration builds speed gradually"), Movement->Velocity.Size2D() > 200.0f && Movement->Velocity.Size2D() < 350.0f);
+		Pilot->DoMove(0.0f, 0.0f);
+		const double BeforeBurstSpeed = Movement->Velocity.Size2D();
+		Pilot->DoBurstStart();
+		const double BurstSpeed = Movement->Velocity.Size2D();
+		const float BurstMana = Pilot->ManaComponent->Mana;
+		TestTrue(TEXT("Shift press adds the configured dash impulse immediately"), FMath::IsNearlyEqual(BurstSpeed,
+			FMath::Min(BeforeBurstSpeed + FlightSetting(Pilot, TEXT("BurstImpulse")),
+				double(FlightSetting(Pilot, TEXT("BurstMaxSpeed")))), 0.1));
+		Scene.Step(0.6f, Delta);
+		TestEqual(TEXT("Shift hold hovers without steering"), Pilot->FlightState, EWEVORAFlightState::Hovering);
+		TestTrue(TEXT("Shift hover retains dash inertia within configured decay"),
+			Movement->Velocity.Size2D() >= BurstSpeed - 0.6 *
+				(FlightSetting(Pilot, TEXT("BurstSpeedDecay")) + FlightSetting(Pilot, TEXT("GlideBrakingDeceleration"))) - 1.0);
+		TestTrue(TEXT("Shift hold pays hover rate without repeated dash cost"), FMath::IsNearlyEqual(BurstMana - Pilot->ManaComponent->Mana, 4.8f, 0.05f));
+		const double HeldSpeed = Movement->Velocity.Size2D();
+		const float HeldMana = Pilot->ManaComponent->Mana;
+		Pilot->DoBurstStart();
+		TestEqual(TEXT("Repeated start while held does not dash again"), Movement->Velocity.Size2D(), HeldSpeed);
+		TestEqual(TEXT("Repeated start while held spends no dash mana"), Pilot->ManaComponent->Mana, HeldMana);
+		Pilot->DoBrakeStart(); Pilot->DoBurstEnd();
+		Scene.Step(0.5f, Delta);
+		TestEqual(TEXT("Releasing Shift keeps held Alt hover"), Pilot->FlightState, EWEVORAFlightState::Hovering);
+		Pilot->DoBrakeEnd();
+		Scene.Step(0.5f, Delta);
+		TestTrue(TEXT("Releasing last hover key restores fast fall"), Movement->Velocity.Z < -500.0f);
+		Pilot->DoBrakeStart();
+		Scene.Step(0.7f, Delta);
+		TestTrue(TEXT("Alt directly catches a fall without Shift or WASD"), FMath::Abs(Movement->Velocity.Z) < 60.0f);
+		Pilot->DoBrakeEnd(); Pilot->DoBurstStart(); Pilot->DoDescendStart();
+		const float DiveMana = Pilot->ManaComponent->Mana;
+		Scene.Step(0.3f, Delta);
+		TestEqual(TEXT("Ctrl overrides Shift hold"), Pilot->FlightState, EWEVORAFlightState::Diving);
+		TestEqual(TEXT("Ctrl suppresses hover mana use"), Pilot->ManaComponent->Mana, DiveMana);
+		Pilot->DoDescendEnd();
+		Scene.Step(0.5f, Delta);
+		TestEqual(TEXT("Held Shift resumes hover after Ctrl release"), Pilot->FlightState, EWEVORAFlightState::Hovering);
+		Pilot->ManaComponent->ConsumeMana(100.0f);
+		Scene.Step(0.2f, Delta);
+		TestEqual(TEXT("Empty mana stops held Shift hover"), Pilot->FlightState, EWEVORAFlightState::Falling);
+		Scene.Controller->UnPossess(); Scene.Controller->Possess(Pilot);
+		Pilot->ManaComponent->RestoreMana(100.0f);
+		Scene.Step(Delta, Delta);
+		TestEqual(TEXT("Possession reset clears Shift hold"), Pilot->FlightState, EWEVORAFlightState::Falling);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORAPartialBurstTest, "WEVORA.Movement.PartialBurstMana",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORAPartialBurstTest::RunTest(const FString& Parameters)
+{
+	double FullBurstSpeed = 0.0;
+	for (const float AvailableMana : {18.0f, 12.0f, 6.0f, 3.0f, 0.0f})
+	{
+		FFlightWorld Scene;
+		if (!TestNotNull(TEXT("Pilot"), Scene.Pilot)) { return false; }
+		Scene.PutInAir();
+		auto* Pilot = Scene.Pilot;
+		auto* Movement = Pilot->GetCharacterMovement();
+		Pilot->ManaComponent->ConsumeMana(Pilot->ManaComponent->Mana - AvailableMana);
+		Pilot->DoMove(0.0f, 1.0f);
+		Pilot->DoBurst();
+		if (AvailableMana == 18.0f)
+		{
+			FullBurstSpeed = Movement->Velocity.Size2D();
+			TestTrue(TEXT("Full dash launches from rest"), FullBurstSpeed > 0.0);
+		}
+		const float ExpectedStrength = FMath::Min(AvailableMana / 12.0f, 1.0f);
+		TestTrue(TEXT("Dash impulse scales with available mana"),
+			FMath::IsNearlyEqual(Movement->Velocity.Size2D(),
+				FullBurstSpeed * ExpectedStrength, 0.01));
+		TestEqual(TEXT("Dash consumes at most twelve mana"), Pilot->ManaComponent->Mana,
+			FMath::Max(0.0f, AvailableMana - 12.0f));
+		const FVector FirstVelocity = Movement->Velocity;
+		Pilot->DoBurst();
+		TestEqual(TEXT("Repeat dash cannot bypass cooldown or empty mana"), Movement->Velocity, FirstVelocity);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORAAirJumpManaTest, "WEVORA.Movement.AirJumpMana",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORAAirJumpManaTest::RunTest(const FString& Parameters)
+{
+	FFlightWorld Scene;
+	if (!TestNotNull(TEXT("Pilot"), Scene.Pilot)) { return false; }
+	Scene.PutInAir();
+	auto* Pilot = Scene.Pilot;
+	auto* Movement = Pilot->GetCharacterMovement();
+	Pilot->ManaComponent->ConsumeMana(Pilot->ManaComponent->Mana - 16.0f);
+	Pilot->DoJumpStart();
+	TestEqual(TEXT("Air jump costs eight mana"), Pilot->ManaComponent->Mana, 8.0f);
+	Pilot->DoJumpStart();
+	TestEqual(TEXT("Held input does not charge again"), Pilot->ManaComponent->Mana, 8.0f);
+	Pilot->DoJumpEnd();
+	Pilot->DoJumpStart();
+	TestEqual(TEXT("Exactly eight mana permits a jump"), Pilot->ManaComponent->Mana, 0.0f);
+	TestTrue(TEXT("Paid jump launches upward"), Movement->Velocity.Z > 800.0f);
+	Pilot->DoJumpEnd();
+	Pilot->ManaComponent->RestoreMana(7.0f);
+	Movement->Velocity.Z = -300.0f;
+	Pilot->DoJumpStart();
+	TestEqual(TEXT("Insufficient mana prevents launch"), Movement->Velocity.Z, -300.0);
+	TestEqual(TEXT("Rejected jump preserves remaining mana"), Pilot->ManaComponent->Mana, 7.0f);
 	return true;
 }
 

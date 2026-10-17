@@ -9,6 +9,7 @@ class USphereComponent;
 class UStaticMeshComponent;
 class UPointLightComponent;
 class UProjectileMovementComponent;
+class UWEVORASpellEffectComponent;
 
 /** Shared Fire/Wind runtime. Consumes a snapshot, never reads live weaving input. */
 UCLASS(Blueprintable)
@@ -17,6 +18,8 @@ class WEVORA_API AWEVORASpellProjectile : public AWEVORASpellDelivery
 	GENERATED_BODY()
 public:
 	AWEVORASpellProjectile();
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
+	TObjectPtr<UWEVORASpellEffectComponent> AttackEffect;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
 	TObjectPtr<USphereComponent> Collision;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")

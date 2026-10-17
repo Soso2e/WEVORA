@@ -109,6 +109,10 @@ void AWEVORACharacter::BeginPlay()
 		Movement->SetMovementMode(MOVE_Walking);
 	}
 	AirSpeedLimit = CruiseSpeed;
+	// Apply after Blueprint component defaults have loaded.
+	TravelArmLength = CameraBoom->TargetArmLength;
+	CameraBoom->SocketOffset = ShoulderOffset;
+	CameraBoom->bEnableCameraRotationLag = false;
 
 	if (FollowCamera)
 	{
@@ -133,13 +137,15 @@ void AWEVORACharacter::Tick(float DeltaSeconds)
 
 void AWEVORACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
+	PlayerInputComponent->BindKey(EKeys::RightMouseButton, IE_Pressed, this, &AWEVORACharacter::BeginPrecisionAim);
+	PlayerInputComponent->BindKey(EKeys::RightMouseButton, IE_Released, this, &AWEVORACharacter::EndPrecisionAim);
 	PlayerInputComponent->BindKey(EKeys::Y, IE_Pressed, this, &AWEVORACharacter::DoRecenterView).bConsumeInput = false;
 	// Asset-free fallback; Blueprint/Enhanced Input may also call the component API.
-	PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, SpellWeavingComponent, &UWEVORASpellWeavingComponent::BeginWeave).bConsumeInput = false;
-	PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Released, SpellWeavingComponent, &UWEVORASpellWeavingComponent::ReleaseWeave).bConsumeInput = false;
+	PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, SpellWeavingComponent, &UWEVORASpellWeavingComponent::BeginAttack).bConsumeInput = false;
+	PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Released, SpellWeavingComponent, &UWEVORASpellWeavingComponent::ReleaseAttack).bConsumeInput = false;
 	PlayerInputComponent->BindKey(EKeys::Q, IE_Pressed, SpellWeavingComponent, &UWEVORASpellWeavingComponent::CycleElement).bConsumeInput = false;
-	PlayerInputComponent->BindKey(EKeys::E, IE_Pressed, SpellWeavingComponent, &UWEVORASpellWeavingComponent::BeginShape).bConsumeInput = false;
-	PlayerInputComponent->BindKey(EKeys::E, IE_Released, SpellWeavingComponent, &UWEVORASpellWeavingComponent::EndShape).bConsumeInput = false;
+	PlayerInputComponent->BindKey(EKeys::E, IE_Pressed, SpellWeavingComponent, &UWEVORASpellWeavingComponent::BeginQuickShape).bConsumeInput = false;
+	PlayerInputComponent->BindKey(EKeys::E, IE_Released, SpellWeavingComponent, &UWEVORASpellWeavingComponent::EndQuickShape).bConsumeInput = false;
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
 		// Tap jumps; a held input takes over as paid ascent after a short delay.
@@ -171,11 +177,14 @@ void AWEVORACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 
 		if (BurstAction)
 		{
-			EnhancedInputComponent->BindAction(BurstAction, ETriggerEvent::Started, this, &AWEVORACharacter::DoBurst);
+			EnhancedInputComponent->BindAction(BurstAction, ETriggerEvent::Started, this, &AWEVORACharacter::DoBurstStart);
+			EnhancedInputComponent->BindAction(BurstAction, ETriggerEvent::Completed, this, &AWEVORACharacter::DoBurstEnd);
+			EnhancedInputComponent->BindAction(BurstAction, ETriggerEvent::Canceled, this, &AWEVORACharacter::DoBurstEnd);
 		}
 		else
 		{
-			PlayerInputComponent->BindKey(EKeys::LeftShift, IE_Pressed, this, &AWEVORACharacter::DoBurst);
+			PlayerInputComponent->BindKey(EKeys::LeftShift, IE_Pressed, this, &AWEVORACharacter::DoBurstStart);
+			PlayerInputComponent->BindKey(EKeys::LeftShift, IE_Released, this, &AWEVORACharacter::DoBurstEnd);
 		}
 
 		if (BrakeAction)
@@ -243,6 +252,7 @@ void AWEVORACharacter::DoMove(float Right, float Forward)
 void AWEVORACharacter::DoLook(float Yaw, float Pitch)
 {
 	SpellWeavingComponent->RecordLook(FVector2D(Yaw, Pitch));
+	if (bHoldViewWhileShaping && SpellWeavingComponent->State == EWEVORAWeavingState::Shaping) { return; }
 	if (GetController())
 	{
 		AddControllerYawInput(Yaw);
@@ -261,11 +271,26 @@ void AWEVORACharacter::DoRecenterView()
 
 void AWEVORACharacter::DoAscendStart()
 {
+	if (bAscending) { return; }
 	bAscending = true;
 	AscendHeldTime = 0.0f;
-	if (!bDescending && GetCharacterMovement()->IsMovingOnGround())
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!bDescending && Movement->IsMovingOnGround())
 	{
 		Jump();
+	}
+	else if (!bDescending && Movement->IsFalling())
+	{
+		// Air jumps cost mana once per press; insufficient mana leaves velocity unchanged.
+		constexpr float AirJumpManaCost = 8.0f;
+		if (!ManaComponent || ManaComponent->Mana < AirJumpManaCost ||
+			!ManaComponent->ConsumeMana(AirJumpManaCost))
+		{
+			return;
+		}
+		// Each new press can jump in air; holding still transitions to paid ascent.
+		Movement->Velocity.Z = FMath::Max(0.0f, JumpLaunchSpeed);
+		OnJumped();
 	}
 }
 
@@ -281,9 +306,6 @@ void AWEVORACharacter::DoDescendStart()
 	CancelSpellForEvasion();
 	bDescending = true;
 	bJumpLaunchPhase = false;
-	bPoweredLastFrame = false;
-	PassiveFloatRemaining = 0.0f;
-	SteeringGraceRemaining = 0.0f;
 	StopJumping();
 	if (GetCharacterMovement()->IsFalling())
 	{
@@ -295,6 +317,18 @@ void AWEVORACharacter::DoDescendStart()
 void AWEVORACharacter::DoDescendEnd()
 {
 	bDescending = false;
+}
+
+void AWEVORACharacter::DoBurstStart()
+{
+	if (bBurstHeld) { return; }
+	bBurstHeld = true;
+	DoBurst();
+}
+
+void AWEVORACharacter::DoBurstEnd()
+{
+	bBurstHeld = false;
 }
 
 void AWEVORACharacter::DoBurst()
@@ -311,10 +345,14 @@ void AWEVORACharacter::DoBurst()
 	{
 		return;
 	}
-	if (ManaComponent->Mana <= 0.0f || !ManaComponent->ConsumeMana(FMath::Max(0.0f, BurstManaCost)))
+	if (ManaComponent->Mana <= 0.0f)
 	{
 		return;
 	}
+	const float ManaCost = FMath::Max(0.0f, BurstManaCost);
+	const float ManaSpent = FMath::Min(ManaComponent->Mana, ManaCost);
+	const float BurstStrength = ManaCost > 0.0f ? ManaSpent / ManaCost : 1.0f;
+	if (!ManaComponent->ConsumeMana(ManaSpent)) { return; }
 
 	FVector BurstDirection = PlanarInputDirection.GetSafeNormal2D();
 
@@ -336,7 +374,7 @@ void AWEVORACharacter::DoBurst()
 		}
 	}
 
-	Movement->Velocity += BurstDirection * BurstImpulse;
+	Movement->Velocity += BurstDirection * BurstImpulse * BurstStrength;
 
 	const float PlanarSpeed = Movement->Velocity.Size2D();
 	if (PlanarSpeed > BurstMaxSpeed && PlanarSpeed > KINDA_SMALL_NUMBER)
@@ -375,16 +413,16 @@ void AWEVORACharacter::OnJumped_Implementation()
 {
 	Super::OnJumped_Implementation();
 	bJumpLaunchPhase = true;
-	PassiveFloatRemaining = 0.0f;
 	FlightState = EWEVORAFlightState::Jumping;
 }
 
 void AWEVORACharacter::ResetFlightInput()
 {
-	bAscending = bDescending = bBraking = false;
-	bJumpLaunchPhase = bPoweredLastFrame = false;
+	bPrecisionAim = false;
+	bAscending = bDescending = bBraking = bBurstHeld = false;
+	bJumpLaunchPhase = false;
 	PlanarInputDirection = FVector::ZeroVector;
-	PlanarInputMagnitude = AscendHeldTime = SteeringGraceRemaining = PassiveFloatRemaining = 0.0f;
+	PlanarInputMagnitude = AscendHeldTime = 0.0f;
 	SpellMovementMultiplier = SpellMovementTarget = SpellMovementBlendStart = 1.0f;
 	CastRecoveryRemaining = SpellMovementBlendElapsed = 0.0f;
 	StopJumping();
@@ -418,14 +456,7 @@ void AWEVORACharacter::UpdateSpellMovement(float DeltaSeconds)
 	{
 		CancelSpellForEvasion();
 	}
-	float Target = 1.0f;
-	switch (SpellWeavingComponent->State)
-	{
-	case EWEVORAWeavingState::Weaving: Target = WeavingMovementMultiplier; break;
-	case EWEVORAWeavingState::Shaping: Target = ShapingMovementMultiplier; break;
-	case EWEVORAWeavingState::ReadyToCast: Target = ReadyMovementMultiplier; break;
-	default: break;
-	}
+	float Target = GetSpellMovementTarget();
 	// Account for a frame that crosses the end of recovery without extending the hold.
 	const float RecoveryStep = FMath::Min(DeltaSeconds, CastRecoveryRemaining);
 	CastRecoveryRemaining -= RecoveryStep;
@@ -463,10 +494,10 @@ void AWEVORACharacter::UpdateFlightBeforeMovement(float DeltaSeconds)
 	// Falling mode retains Unreal's swept collision, ceiling response, floor detection and landing.
 	// Only vertical support changes; planar speed is independent of climb/dive speed.
 	UpdateSpellMovement(DeltaSeconds);
-	Movement->MaxAcceleration = FMath::Max(0.0f, GlideAcceleration) * SpellMovementMultiplier;
 	Movement->JumpZVelocity = FMath::Max(0.0f, JumpLaunchSpeed);
 	Movement->BrakingDecelerationFalling = FMath::Max(0.0f, GlideBrakingDeceleration);
 	const bool bGrounded = Movement->IsMovingOnGround();
+	Movement->MaxAcceleration = FMath::Max(0.0f, bGrounded ? GlideAcceleration : AirSteeringAcceleration) * SpellMovementMultiplier;
 	ManaComponent->UpdateRecovery(DeltaSeconds, bGrounded);
 	AscendHeldTime = bAscending ? AscendHeldTime + DeltaSeconds : 0.0f;
 	AirSpeedLimit = FMath::FInterpConstantTo(AirSpeedLimit, FMath::Max(0.0f, CruiseSpeed),
@@ -487,8 +518,7 @@ void AWEVORACharacter::UpdateFlightBeforeMovement(float DeltaSeconds)
 	{
 		FlightState = EWEVORAFlightState::Grounded;
 		Movement->GravityScale = FallGravityScale;
-		bJumpLaunchPhase = bPoweredLastFrame = false;
-		PassiveFloatRemaining = SteeringGraceRemaining = 0.0f;
+		bJumpLaunchPhase = false;
 		AirSpeedLimit = FMath::Max(0.0f, CruiseSpeed);
 		return;
 	}
@@ -498,28 +528,21 @@ void AWEVORACharacter::UpdateFlightBeforeMovement(float DeltaSeconds)
 	{
 		FlightState = EWEVORAFlightState::Diving;
 		Movement->GravityScale = FMath::Max(FallGravityScale, DiveGravityScale);
-		bJumpLaunchPhase = bPoweredLastFrame = false;
-		PassiveFloatRemaining = SteeringGraceRemaining = 0.0f;
+		bJumpLaunchPhase = false;
 		return;
 	}
 
-	SteeringGraceRemaining = bSteering ? FMath::Max(0.0f, SteeringGraceDuration) :
-		FMath::Max(0.0f, SteeringGraceRemaining - DeltaSeconds);
 	const bool bWantsAscent = bAscending && AscendHeldTime >= AscendHoldDelay;
 	// Do not erase a tap jump's upward impulse when WASD is already held.
-	if (bJumpLaunchPhase && Movement->Velocity.Z > 120.0f && !bWantsAscent && !bBraking)
+	if (bJumpLaunchPhase && Movement->Velocity.Z > 120.0f && !bWantsAscent && !bBraking && !bBurstHeld)
 	{
 		FlightState = EWEVORAFlightState::Jumping;
 		Movement->GravityScale = FMath::Max(0.0f, FallGravityScale);
 		return;
 	}
-	if (bJumpLaunchPhase)
-	{
-		bJumpLaunchPhase = false;
-		PassiveFloatRemaining = FMath::Max(0.0f, PassiveFloatDuration) + FMath::Max(0.0f, GravityReturnDuration);
-	}
+	bJumpLaunchPhase = false;
 
-	const bool bWantsSupport = bHoverEnabled && (bWantsAscent || bBraking || bSteering || SteeringGraceRemaining > 0.0f);
+	const bool bWantsSupport = bHoverEnabled && (bWantsAscent || bBraking || bBurstHeld);
 	const float ManaRate = FMath::Max(0.0f, bWantsAscent ? AscendManaPerSecond : HoverManaPerSecond);
 	if (bWantsSupport && ManaComponent->Mana > 0.0f && ManaComponent->ConsumeMana(ManaRate * DeltaSeconds))
 	{
@@ -530,36 +553,14 @@ void AWEVORACharacter::UpdateFlightBeforeMovement(float DeltaSeconds)
 		const float MaxDelta = FMath::Max(0.0f, MaxHoverAcceleration) * DeltaSeconds *
 			(bWantsAscent ? SpellMovementMultiplier : 1.0f);
 		Movement->Velocity.Z += FMath::Clamp((TargetZ - Movement->Velocity.Z) * Response, -MaxDelta, MaxDelta);
-		bPoweredLastFrame = true;
-		PassiveFloatRemaining = 0.0f;
 		return;
 	}
 
-	if (bWantsSupport || (bPoweredLastFrame && ManaComponent->Mana <= 0.0f))
-	{
-		// Empty mana must lead directly to falling, without repeated free float resets.
-		PassiveFloatRemaining = SteeringGraceRemaining = 0.0f;
-	}
-	else if (bPoweredLastFrame)
-	{
-		PassiveFloatRemaining = FMath::Max(0.0f, PassiveFloatDuration) + FMath::Max(0.0f, GravityReturnDuration);
-	}
-	bPoweredLastFrame = false;
-	if (PassiveFloatRemaining > 0.0f)
-	{
-		const float ReturnDuration = FMath::Max(0.0f, GravityReturnDuration);
-		const float ReturnAlpha = ReturnDuration > 0.0f ?
-			1.0f - FMath::Clamp(PassiveFloatRemaining / ReturnDuration, 0.0f, 1.0f) : 0.0f;
-		Movement->GravityScale = FMath::Lerp(FMath::Max(0.0f, PassiveGravityScale),
-			FMath::Max(0.0f, FallGravityScale), ReturnAlpha);
-		PassiveFloatRemaining = FMath::Max(0.0f, PassiveFloatRemaining - DeltaSeconds);
-		FlightState = EWEVORAFlightState::Coasting;
-	}
-	else
-	{
-		Movement->GravityScale = FMath::Max(0.0f, FallGravityScale);
-		FlightState = EWEVORAFlightState::Falling;
-	}
+	// Releasing all support input (or exhausting mana) restores normal gravity immediately.
+	// Residual horizontal velocity alone never grants passive altitude support.
+	Movement->GravityScale = FMath::Max(0.0f, FallGravityScale) *
+		(bSteering && Movement->Velocity.Z <= 0.0f ? FMath::Clamp(SteeringFallMultiplier, 0.01f, 1.0f) : 1.0f);
+	FlightState = EWEVORAFlightState::Falling;
 }
 
 void AWEVORACharacter::UpdateBrake(float DeltaSeconds)
@@ -584,14 +585,50 @@ void AWEVORACharacter::UpdateCameraFeel(float DeltaSeconds)
 		return;
 	}
 
+	CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength,
+		bPrecisionAim ? AimArmLength : TravelArmLength, DeltaSeconds, 12.0f);
+	const float NewFOV = bPrecisionAim
+		? FMath::FInterpTo(FollowCamera->FieldOfView, AimFOV, DeltaSeconds, 12.0f)
+		: CalculateCameraFOV(DeltaSeconds);
+	if (FMath::IsFinite(NewFOV))
+	{
+		FollowCamera->SetFieldOfView(FMath::Clamp(NewFOV, 5.0f, 170.0f));
+	}
+}
+
+float AWEVORACharacter::CalculateCameraFOV_Implementation(float DeltaSeconds) const
+{
+	if (!FollowCamera) { return BaseCameraFOV; }
 	const float ReferenceSpeed = FMath::Max(BurstMaxSpeed, 1.0f);
 	const float SpeedRatio = FMath::Clamp(GetVelocity().Size() / ReferenceSpeed, 0.0f, 1.0f);
 	const float TargetFOV = BaseCameraFOV + SpeedFOVBoost * SpeedRatio;
-	const float NewFOV = FMath::FInterpTo(
+	return FMath::FInterpTo(
 		FollowCamera->FieldOfView,
 		TargetFOV,
 		DeltaSeconds,
 		CameraFOVInterpSpeed);
+}
 
-	FollowCamera->SetFieldOfView(NewFOV);
+float AWEVORACharacter::GetSpellMovementTarget_Implementation() const
+{
+	switch (SpellWeavingComponent->State)
+	{
+	case EWEVORAWeavingState::Weaving: return WeavingMovementMultiplier;
+	case EWEVORAWeavingState::Shaping: return ShapingMovementMultiplier;
+	case EWEVORAWeavingState::ReadyToCast: return ReadyMovementMultiplier;
+	default: return 1.0f;
+	}
+}
+
+bool AWEVORACharacter::ResolveSpellLaunch_Implementation(const FWEVORASpellContext& Context,
+	FWEVORASpellLaunch& OutLaunch) const
+{
+	return SpellCastComponent && SpellCastComponent->ResolveSpell(Context, OutLaunch);
+}
+
+float AWEVORACharacter::GetSpellRecoilSpeed_Implementation(const FWEVORASpellContext& Context) const
+{
+	if (!SpellCastComponent) { return 0.0f; }
+	return Context.Gesture == EWEVORAGesture::Thrust ?
+		SpellCastComponent->ThrustRecoilSpeed : SpellCastComponent->RecoilSpeed;
 }

@@ -5,17 +5,25 @@
 #include "Spell/WEVORASpellWeavingComponent.h"
 #include "Spell/WEVORASpellProjectile.h"
 #include "Spell/WEVORASpellReactionComponent.h"
+#include "Spell/WEVORASpellEffectComponent.h"
+#include "Spell/WEVORAImpactEffect.h"
+#include "Components/InstancedStaticMeshComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/Material.h"
+#include "MaterialDomain.h"
 #include "AI/WEVORAEnemy.h"
 #include "AI/WEVORAHealthComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/PointLightComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Camera/PlayerCameraManager.h"
+#include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/ProjectileMovementComponent.h"
@@ -122,6 +130,124 @@ struct FSpellCombatWorld
 };
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORAAttackEffectsTest, "WEVORA.Spell.Combat.AttackEffects",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORAAttackEffectsTest::RunTest(const FString& Parameters)
+{
+	FSpellCombatWorld Scene;
+	if (!TestNotNull(TEXT("Pilot"), Scene.Pilot) || !TestNotNull(TEXT("Enemy"), Scene.Enemy)) { return false; }
+	TestTrue(TEXT("Saved pilot allows Lightning selection"), Scene.Pilot->SpellWeavingComponent->AvailableElements.Contains(EWEVORASpellElement::Lightning));
+	UMaterialInstanceDynamic* Surface = UMaterialInstanceDynamic::Create(UMaterial::GetDefaultMaterial(MD_Surface), Scene.Enemy);
+	Scene.Enemy->Body->SetMaterial(0, Surface);
+	FHitResult Hit(Scene.Enemy, Scene.Enemy->Collision, Scene.Enemy->Body->GetComponentLocation(), FVector::UpVector);
+	TestTrue(TEXT("Proxy collision resolves visible object's actual material instance"), UWEVORASpellEffectComponent::ResolveHitMaterial(Hit) == Surface);
+	for (const EWEVORASpellElement Element : {EWEVORASpellElement::Fire, EWEVORASpellElement::Wind, EWEVORASpellElement::Lightning})
+	{
+		FWEVORASpellContext Context;
+		Context.Element = Element;
+		Context.Gesture = EWEVORAGesture::Thrust;
+		FWEVORASpellLaunch Launch;
+		if (!TestTrue(TEXT("Saved Blueprint resolves all three effects"), Scene.Pilot->ResolveSpellLaunch(Context, Launch))) { return false; }
+		Launch.Direction = FVector::ForwardVector;
+		const FTransform Transform(FVector(0, 3000, 500));
+		AWEVORASpellProjectile* Shot = Scene.World->SpawnActorDeferred<AWEVORASpellProjectile>(AWEVORASpellProjectile::StaticClass(), Transform);
+		Shot->InitializeSpell(Launch);
+		Shot->FinishSpawning(Transform);
+		TArray<UInstancedStaticMeshComponent*> Meshes;
+		Shot->GetComponents(Meshes);
+		TestEqual(TEXT("One batched animated mesh per attack"), Meshes.Num(), 1);
+		if (Meshes.Num()) { TestTrue(TEXT("Animated attack geometry exists"), Meshes[0]->GetInstanceCount() > 0); }
+		Shot->AttackEffect->SpawnImpact(Hit);
+		Shot->Destroy();
+	}
+	int32 Count = 0;
+	for (TActorIterator<AWEVORAImpactEffect> It(Scene.World); It; ++It)
+	{
+		++Count;
+		TestTrue(TEXT("Fragments retain hit material after projectile destruction"), It->Fragments->GetMaterial(0) == Surface);
+		TestEqual(TEXT("Configured fragment count"), It->Fragments->GetInstanceCount(), 12);
+		TestEqual(TEXT("Cosmetics cannot block attacks"), It->Fragments->GetCollisionEnabled(), ECollisionEnabled::NoCollision);
+	}
+	TestEqual(TEXT("Every attribute creates an independent impact"), Count, 3);
+	Scene.Step(0.1f);
+	for (TActorIterator<AWEVORAImpactEffect> It(Scene.World); It; ++It)
+	{
+		FTransform First;
+		It->Fragments->GetInstanceTransform(0, First);
+		TestTrue(TEXT("Fragments fly outward"), First.GetLocation().Size() > 1);
+	}
+	Scene.Step(1.0f);
+	TestFalse(TEXT("Impact actors expire automatically"), bool(TActorIterator<AWEVORAImpactEffect>(Scene.World)));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORATPSAimTest, "WEVORA.Spell.Combat.TPSAim",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORATPSAimTest::RunTest(const FString& Parameters)
+{
+	FSpellCombatWorld Scene;
+	if (!TestNotNull(TEXT("Saved pilot"), Scene.Pilot) || !TestNotNull(TEXT("Saved enemy"), Scene.Enemy)) { return false; }
+	FVector ViewLocation;
+	FRotator ViewRotation;
+	Scene.Controller->GetPlayerViewPoint(ViewLocation, ViewRotation);
+	TestTrue(TEXT("Shoulder camera leaves player left of the aim axis"),
+		FVector::DotProduct(Scene.Pilot->GetActorLocation() - ViewLocation,
+			FRotationMatrix(ViewRotation).GetUnitAxis(EAxis::Y)) < -40.0f);
+	Scene.Pilot->BeginPrecisionAim();
+	Scene.Step(0.5f);
+	TestTrue(TEXT("Held precision aim settles to configured FOV"),
+		FMath::IsNearlyEqual(Scene.Pilot->GetFollowCamera()->FieldOfView, Scene.Pilot->AimFOV, 0.1f));
+	Scene.Pilot->EndPrecisionAim();
+	Scene.Step(0.5f);
+	TestTrue(TEXT("Release restores travel FOV"), Scene.Pilot->GetFollowCamera()->FieldOfView > 85.0f);
+	Scene.AimTarget(FRotator(10, 25, 0));
+	FWEVORAAimSolution Aim;
+	TestTrue(TEXT("Shared camera aim available"), Scene.Pilot->SpellCastComponent->GetAimSolution(16, Aim));
+	TestTrue(TEXT("Reticle recognizes living target"), Aim.bTargetIsDamageable);
+	TestFalse(TEXT("Open shoulder shot is clear"), Aim.bBlocked);
+	const FRotator BeforeShape = Scene.Controller->GetControlRotation();
+	Scene.Pilot->GetCharacterMovement()->Velocity = FVector(1200, 700, 0);
+	Scene.Weave();
+	TestTrue(TEXT("Gesture input preserves camera aim"), Scene.Controller->GetControlRotation().Equals(BeforeShape, 0.001f));
+	AWEVORASpellProjectile* Shot = Scene.Shot();
+	if (!TestNotNull(TEXT("Shoulder shot spawned"), Shot)) { return false; }
+	TestTrue(TEXT("Cast and reticle share launch origin"), Shot->GetActorLocation().Equals(Aim.Start, 0.01f));
+	TestTrue(TEXT("Actual velocity converges on crosshair target while moving"),
+		FVector::DotProduct(Shot->Movement->Velocity.GetSafeNormal(), (Aim.Target - Shot->GetActorLocation()).GetSafeNormal()) > 0.9999f);
+	Scene.Step(0.8f);
+	TestTrue(TEXT("Offset moving shot actually damages target"), Scene.Enemy->HealthComponent->Health <= 75.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORATPSCoverTest, "WEVORA.Spell.Combat.TPSCoverPreview",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORATPSCoverTest::RunTest(const FString& Parameters)
+{
+	FSpellCombatWorld Scene;
+	if (!Scene.Pilot || !Scene.Enemy) { return false; }
+	Scene.AimTarget(FRotator::ZeroRotator);
+	FWEVORAAimSolution Aim;
+	Scene.Pilot->SpellCastComponent->GetAimSolution(16, Aim);
+	// A narrow obstacle on the muzzle path while the shoulder camera can see past it.
+	AActor* Cover = Scene.Wall(FMath::Lerp(Aim.Start, Aim.Target, 0.15f), FVector(10, 10, 60));
+	Scene.Pilot->SpellCastComponent->GetAimSolution(16, Aim);
+	TestTrue(TEXT("Camera still sees target beyond cover"), Aim.bTargetIsDamageable);
+	TestTrue(TEXT("Reticle warns of obstructed projectile path"), Aim.bBlocked);
+	TestFalse(TEXT("Distant cover does not prevent spawning"), Aim.bMuzzleBlocked);
+	Scene.Weave();
+	TestNotNull(TEXT("Bolt launches toward cover"), Scene.Shot());
+	Scene.Step(0.8f);
+	TestEqual(TEXT("Cover stops damage"), Scene.Enemy->HealthComponent->Health, 100.0f);
+	Cover->Destroy();
+	Scene.Pilot->SpellCastComponent->GetAimSolution(16, Aim);
+	Scene.Wall(Scene.Pilot->GetPawnViewLocation() + Aim.Direction * 35.0f, FVector(10, 30, 30));
+	Scene.Pilot->SpellCastComponent->GetAimSolution(16, Aim);
+	TestTrue(TEXT("Muzzle obstruction is reported"), Aim.bMuzzleBlocked);
+	Scene.Weave();
+	TestNull(TEXT("No shot spawns through nearby wall"), Scene.Shot());
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORASpellAirCombatTest, "WEVORA.Spell.Combat.AirborneCastToDamage",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWEVORASpellAirCombatTest::RunTest(const FString& Parameters)
@@ -150,11 +276,24 @@ bool FWEVORASpellAirCombatTest::RunTest(const FString& Parameters)
 	Scene.Step(0.8f); // Real swept projectile hit; no direct ApplyDamage or hit callback.
 	TestEqual(TEXT("Fire hit subtracts damage exactly once"), Scene.Enemy->HealthComponent->Health, 75.0f);
 	TestTrue(TEXT("Fire adds Burning state"), Scene.Enemy->SpellReactionComponent->HasState(EWEVORASpellTargetState::Burning));
+	TestTrue(TEXT("Actual Fire hit enables burning light"), Scene.Enemy->BurningLight->IsVisible());
+	for (UStaticMeshComponent* Flame : Scene.Enemy->BurningFlames)
+	{
+		TestTrue(TEXT("Actual Fire hit shows flame meshes"), Flame->IsVisible());
+		TestNotNull(TEXT("Flame mesh is loaded"), Flame->GetStaticMesh().Get());
+		TestNotNull(TEXT("Flame glow material is loaded"), Flame->GetMaterial(0));
+		TestEqual(TEXT("Effect does not obstruct targeting or projectiles"), Flame->GetCollisionEnabled(), ECollisionEnabled::NoCollision);
+	}
 	TestFalse(TEXT("Hit consumes Fire projectile"), FireRef.IsValid());
 	TestFalse(TEXT("Ignore entry cleaned up on impact"), Scene.Pilot->GetCapsuleComponent()->GetMoveIgnoreActors().Contains(Fire));
 	TestEqual(TEXT("Self HP unchanged"), Scene.Pilot->HealthComponent->Health, 100.0f);
 	Scene.Step(3.2f);
 	TestTrue(TEXT("Fire periodic damage finishes after three seconds"), FMath::IsNearlyEqual(Scene.Enemy->HealthComponent->Health, 60.0f, 0.01f));
+	TestFalse(TEXT("Burn expiration hides light"), Scene.Enemy->BurningLight->IsVisible());
+	for (UStaticMeshComponent* Flame : Scene.Enemy->BurningFlames)
+	{
+		TestFalse(TEXT("Burn expiration hides all flames"), Flame->IsVisible());
+	}
 	Scene.Pilot->SpellWeavingComponent->CycleElement();
 	Scene.AimTarget(FRotator(20.0f, 35.0f, 0));
 	Scene.Weave();
@@ -194,12 +333,13 @@ bool FWEVORASpellSafetyTest::RunTest(const FString& Parameters)
 	Scene.Weave();
 	TestNull(TEXT("Short muzzle sweep prevents spawning through nearby wall"), Scene.Shot());
 	NearWall->Destroy();
+	Scene.Step(0.51f); // A recognized cast attempt also starts the shared cooldown; allow float tick tolerance.
 	AActor* FarWall = Scene.Wall(FVector(500, 0, 500), FVector(5, 300, 300));
 	Scene.Weave();
 	AWEVORASpellProjectile* WallShot = Scene.Shot();
 	if (!TestNotNull(TEXT("Clear muzzle spawns towards wall"), WallShot)) { return false; }
 	TWeakObjectPtr<AWEVORASpellProjectile> WallShotRef(WallShot);
-	Scene.Step(0.5f);
+	Scene.Step(0.51f);
 	TestFalse(TEXT("Swept wall impact consumes projectile"), WallShotRef.IsValid());
 	TestEqual(TEXT("Enemy behind wall takes no damage"), Scene.Enemy->HealthComponent->Health, 100.0f);
 	FarWall->Destroy();
@@ -217,6 +357,106 @@ bool FWEVORASpellSafetyTest::RunTest(const FString& Parameters)
 	TestNull(TEXT("Unpossessed character cannot attack"), Scene.Shot());
 	Scene.Pilot->RouteEndPlay(EEndPlayReason::Destroyed);
 	TestFalse(TEXT("Cast subscription removed on end play"), Scene.Pilot->SpellWeavingComponent->OnSpellCast.IsBound());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORASimpleAttackTest, "WEVORA.Spell.Combat.SimpleAttack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORASimpleAttackTest::RunTest(const FString& Parameters)
+{
+	FSpellCombatWorld Scene;
+	if (!TestNotNull(TEXT("Pilot"), Scene.Pilot) || !TestNotNull(TEXT("Enemy"), Scene.Enemy)) { return false; }
+	Scene.AimTarget(FRotator::ZeroRotator);
+	UWEVORASpellWeavingComponent* C = Scene.Pilot->SpellWeavingComponent;
+	TestEqual(TEXT("Default cooldown"), C->AttackCooldown, 0.5f);
+	TestEqual(TEXT("Default charge cap"), C->MaxChargeTime, 2.0f);
+	C->BeginAttack();
+	C->ReleaseAttack();
+	AWEVORASpellProjectile* Tap = Scene.Shot();
+	if (!TestNotNull(TEXT("Tap fires without gesture"), Tap)) { return false; }
+	TestEqual(TEXT("Tap uses forward shape"), Tap->Launch.Spell.Shape, EWEVORASpellShape::Forward);
+	TestEqual(TEXT("Tap retains base power"), Tap->Launch.Spell.Power, Scene.Pilot->SpellCastComponent->SpellPower);
+	Tap->Destroy();
+	C->BeginAttack(); C->ReleaseAttack(); C->BeginQuickShape();
+	TestEqual(TEXT("Cooldown blocks both inputs"), C->State, EWEVORAWeavingState::Idle);
+	Scene.Step(0.49f);
+	C->BeginAttack();
+	TestEqual(TEXT("Cooldown lasts at least half a second"), C->State, EWEVORAWeavingState::Idle);
+	Scene.Step(0.02f);
+	C->BeginAttack();
+	TestEqual(TEXT("Can attack after cooldown"), C->State, EWEVORAWeavingState::Weaving);
+	Scene.Step(1.0f);
+	TestTrue(TEXT("Half charge after one second"), FMath::IsNearlyEqual(C->GetChargeAlpha(), 0.5f, 0.01f));
+	C->CycleElement();
+	C->BeginQuickShape(); C->EndQuickShape();
+	TestEqual(TEXT("E does not interrupt normal charge"), C->State, EWEVORAWeavingState::Weaving);
+	Scene.Step(1.2f);
+	TestEqual(TEXT("Charge saturates at two seconds"), C->GetChargeAlpha(), 1.0f);
+	TestNull(TEXT("Full charge waits for release"), Scene.Shot());
+	C->ReleaseAttack();
+	AWEVORASpellProjectile* Charged = Scene.Shot();
+	if (!TestNotNull(TEXT("Charged attack fires on release"), Charged)) { return false; }
+	TestEqual(TEXT("Charge snapshot caps duration"), C->LastCastContext.ChargeDuration, 2.0f);
+	TestEqual(TEXT("Selection while charging persists"), Charged->Launch.Spell.Element, EWEVORASpellElement::Wind);
+	TestEqual(TEXT("Full charge doubles reaction power"), Charged->Launch.Spell.Power,
+		Scene.Pilot->SpellCastComponent->SpellPower * 2.0f);
+	Charged->Destroy();
+	Scene.Step(0.51f);
+	C->BeginQuickShape();
+	TestEqual(TEXT("E alone begins drawing"), C->State, EWEVORAWeavingState::Shaping);
+	C->BeginAttack(); C->ReleaseAttack();
+	TestEqual(TEXT("LMB does not interrupt E drawing"), C->State, EWEVORAWeavingState::Shaping);
+	const FRotator Before = Scene.Controller->GetControlRotation();
+	Scene.Pilot->DoLook(15.0f, 0.0f);
+	TestTrue(TEXT("Drawing preserves aim"), Before.Equals(Scene.Controller->GetControlRotation()));
+	C->EndQuickShape();
+	TestEqual(TEXT("E release casts and resets"), C->State, EWEVORAWeavingState::Idle);
+	TestEqual(TEXT("Drawn gesture preserved"), C->LastCastContext.Gesture, EWEVORAGesture::Sweep);
+	AWEVORASpellProjectile* Woven = Scene.Shot();
+	if (!TestNotNull(TEXT("E release needs no left click"), Woven)) { return false; }
+	Woven->Destroy();
+	Scene.Step(0.51f);
+	C->BeginQuickShape(); C->EndQuickShape();
+	TestNull(TEXT("Empty drawing cancels"), Scene.Shot());
+	TestEqual(TEXT("Invalid drawing consumes no cooldown"), C->GetCooldownRemaining(), 0.0f);
+	C->BeginAttack(); C->CancelWeave(); C->ReleaseAttack();
+	TestNull(TEXT("Canceled charge release cannot fire"), Scene.Shot());
+	C->BeginQuickShape(); C->RecordLook(FVector2D(15, 0));
+	C->CancelWeave(); C->EndQuickShape();
+	TestNull(TEXT("Canceled drawing release cannot fire"), Scene.Shot());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORALightningHitTest, "WEVORA.Spell.Combat.LightningHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORALightningHitTest::RunTest(const FString& Parameters)
+{
+	for (const float ChargeTime : {0.0f, 2.1f})
+	{
+		FSpellCombatWorld Scene;
+		if (!TestNotNull(TEXT("Saved pilot"), Scene.Pilot) || !TestNotNull(TEXT("Saved enemy"), Scene.Enemy)) { return false; }
+		Scene.AimTarget(FRotator::ZeroRotator);
+		auto* Weaving = Scene.Pilot->SpellWeavingComponent;
+		Weaving->CycleElement(); Weaving->CycleElement();
+		TestEqual(TEXT("Q cycle reaches Lightning"), Weaving->Context.Element, EWEVORASpellElement::Lightning);
+		Weaving->BeginAttack();
+		Scene.Step(ChargeTime);
+		Weaving->ReleaseAttack();
+		AWEVORASpellProjectile* Shot = Scene.Shot();
+		if (!TestNotNull(TEXT("Lightning attack spawns"), Shot)) { return false; }
+		TestEqual(TEXT("Saved effect Blueprint is used by actual cast"), Shot->GetClass()->GetPathName(),
+			FString(TEXT("/Game/WEVORA/Effects/BP_WEVORASpellProjectile.BP_WEVORASpellProjectile_C")));
+		TestEqual(TEXT("Lightning snapshot"), Shot->Launch.Spell.Element, EWEVORASpellElement::Lightning);
+		const FVector BeforeHit = Scene.Enemy->GetActorLocation();
+		Scene.Step(0.8f);
+		const float ExpectedHealth = ChargeTime > 0.0f ? 50.0f : 75.0f;
+		TestEqual(TEXT("Swept Lightning hit deals one scaled damage event"), Scene.Enemy->HealthComponent->Health, ExpectedHealth);
+		TestFalse(TEXT("Lightning does not apply Burning"), Scene.Enemy->SpellReactionComponent->HasState(EWEVORASpellTargetState::Burning));
+		TestFalse(TEXT("Lightning does not apply Wind displacement"), Scene.Enemy->SpellReactionComponent->IsDisplaced());
+		Scene.Step(3.2f);
+		TestEqual(TEXT("Lightning has no periodic damage"), Scene.Enemy->HealthComponent->Health, ExpectedHealth);
+		TestTrue(TEXT("Lightning leaves target position unchanged"), Scene.Enemy->GetActorLocation().Equals(BeforeHit, 0.01f));
+	}
 	return true;
 }
 
@@ -339,6 +579,66 @@ bool FWEVORASpellDataTest::RunTest(const FString& Parameters)
 	Scene.Pilot->SpellWeavingComponent->AvailableElements = { EWEVORASpellElement::Wind };
 	Scene.Pilot->SpellWeavingComponent->CycleElement();
 	TestEqual(TEXT("Selection follows configured elements"), Scene.Pilot->SpellWeavingComponent->Context.Element, EWEVORASpellElement::Wind);
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORABlueprintDesignTest, "WEVORA.Design.BlueprintRules",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORABlueprintDesignTest::RunTest(const FString& Parameters)
+{
+	FSpellCombatWorld Scene;
+	if (!TestNotNull(TEXT("Saved Blueprint pilot"), Scene.Pilot)) { return false; }
+	AWEVORACharacter* Pilot = Scene.Pilot;
+	for (const FName Name : { FName(TEXT("CalculateCameraFOV")), FName(TEXT("GetSpellMovementTarget")),
+		FName(TEXT("ResolveSpellLaunch")), FName(TEXT("GetSpellRecoilSpeed")) })
+	{
+		UFunction* Function = Pilot->FindFunction(Name);
+		if (!TestNotNull(*Name.ToString(), Function)) { return false; }
+		TestTrue(TEXT("Saved Blueprint owns the design override"), Function->GetOuterUClass() == Pilot->GetClass());
+	}
+	for (const EWEVORAWeavingState State : { EWEVORAWeavingState::Idle, EWEVORAWeavingState::Weaving,
+		EWEVORAWeavingState::Shaping, EWEVORAWeavingState::ReadyToCast })
+	{
+		Pilot->SpellWeavingComponent->State = State;
+		TestEqual(TEXT("Blueprint movement rule preserves existing defaults"),
+			Pilot->GetSpellMovementTarget(), Pilot->GetSpellMovementTarget_Implementation());
+	}
+	Pilot->SpellWeavingComponent->State = EWEVORAWeavingState::Idle;
+	Pilot->GetCharacterMovement()->Velocity = FVector(1600, 400, 200);
+	for (const float Delta : { 1.0f / 30.0f, 1.0f / 60.0f, 1.0f / 120.0f })
+	{
+		TestTrue(TEXT("Blueprint camera preserves interpolation at multiple frame rates"), FMath::IsNearlyEqual(
+			Pilot->CalculateCameraFOV(Delta), Pilot->CalculateCameraFOV_Implementation(Delta), 0.001f));
+	}
+	for (const EWEVORASpellElement Element : { EWEVORASpellElement::Fire, EWEVORASpellElement::Wind })
+	{
+		for (const EWEVORAGesture Gesture : { EWEVORAGesture::Thrust, EWEVORAGesture::Sweep,
+			EWEVORAGesture::Circle, EWEVORAGesture::Slam })
+		{
+			FWEVORASpellContext Context;
+			Context.Element = Element;
+			Context.Gesture = Gesture;
+			FWEVORASpellLaunch BlueprintLaunch, NativeLaunch;
+			TestTrue(TEXT("Blueprint resolves configured spell"), Pilot->ResolveSpellLaunch(Context, BlueprintLaunch));
+			TestTrue(TEXT("Native compatibility fallback resolves spell"), Pilot->ResolveSpellLaunch_Implementation(Context, NativeLaunch));
+			TestEqual(TEXT("Shape preserved"), BlueprintLaunch.Spell.Shape, NativeLaunch.Spell.Shape);
+			TestEqual(TEXT("Element preserved"), BlueprintLaunch.Spell.Element, NativeLaunch.Spell.Element);
+			TestEqual(TEXT("Delivery preserved"), BlueprintLaunch.Spell.Delivery, NativeLaunch.Spell.Delivery);
+			TestEqual(TEXT("Speed preserved"), BlueprintLaunch.Parameters.Speed, NativeLaunch.Parameters.Speed);
+			TestEqual(TEXT("Radius preserved"), BlueprintLaunch.Parameters.Radius, NativeLaunch.Parameters.Radius);
+			TestEqual(TEXT("Lifetime preserved"), BlueprintLaunch.Parameters.Lifetime, NativeLaunch.Parameters.Lifetime);
+			TestEqual(TEXT("Recoil rule preserved"), Pilot->GetSpellRecoilSpeed(Context), Pilot->GetSpellRecoilSpeed_Implementation(Context));
+		}
+	}
+	FWEVORASpellContext Context;
+	Context.Gesture = EWEVORAGesture::Thrust;
+	Pilot->SpellCastComponent->SpellPower = 2.5f;
+	Pilot->SpellCastComponent->ShapeProfiles[Context.Gesture].SpeedMultiplier = 1.7f;
+	FWEVORASpellLaunch Launch;
+	TestTrue(TEXT("Blueprint uses changed component settings"), Pilot->ResolveSpellLaunch(Context, Launch));
+	TestEqual(TEXT("Configured power is used"), Launch.Spell.Power, 2.5f);
+	TestTrue(TEXT("Configured shape multiplier is used"), FMath::IsNearlyEqual(Launch.Parameters.Speed, 3740.0f));
+	Pilot->SpellCastComponent->ShapeProfiles.Remove(Context.Gesture);
+	TestFalse(TEXT("Blueprint rejects missing shape"), Pilot->ResolveSpellLaunch(Context, Launch));
 	return true;
 }
 #endif

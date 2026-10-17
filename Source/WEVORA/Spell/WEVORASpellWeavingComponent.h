@@ -6,6 +6,7 @@
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FWEVORAOnSpellCast, const FWEVORASpellContext&, Context);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FWEVORAOnSpellPresentationChanged, EWEVORAWeavingState, State, const FWEVORASpellContext&, Context);
+DECLARE_MULTICAST_DELEGATE_OneParam(FWEVORAOnGestureSample, FVector2D);
 
 UCLASS(ClassGroup=(WEVORA), meta=(BlueprintSpawnableComponent))
 class WEVORA_API UWEVORASpellWeavingComponent : public UActorComponent
@@ -13,6 +14,8 @@ class WEVORA_API UWEVORASpellWeavingComponent : public UActorComponent
 	GENERATED_BODY()
 public:
 	UWEVORASpellWeavingComponent();
+	/** Presentation receives the same finite, positive-up input as recognition. */
+	FWEVORAOnGestureSample OnGestureSample;
 	UPROPERTY(BlueprintAssignable, Category="Spell")
 	FWEVORAOnSpellCast OnSpellCast;
 	/** Selection/state snapshot for presentation; independent of casting gameplay. */
@@ -24,7 +27,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Recognition")
 	bool bInvertLookY = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
-	TArray<EWEVORASpellElement> AvailableElements = { EWEVORASpellElement::Fire, EWEVORASpellElement::Wind };
+	TArray<EWEVORASpellElement> AvailableElements = { EWEVORASpellElement::Fire, EWEVORASpellElement::Wind, EWEVORASpellElement::Lightning };
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Debug")
 	bool bShowDebug = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Debug")
@@ -35,6 +38,22 @@ public:
 	FWEVORASpellContext Context;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Spell")
 	FWEVORASpellContext LastCastContext;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Attack", meta=(ClampMin="0"))
+	float AttackCooldown = 0.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Attack", meta=(ClampMin="0.01"))
+	float MaxChargeTime = 2.0f;
+	UFUNCTION(BlueprintCallable, Category="Spell|Attack")
+	void BeginAttack();
+	UFUNCTION(BlueprintCallable, Category="Spell|Attack")
+	void ReleaseAttack();
+	UFUNCTION(BlueprintCallable, Category="Spell|Attack")
+	void BeginQuickShape();
+	UFUNCTION(BlueprintCallable, Category="Spell|Attack")
+	void EndQuickShape();
+	UFUNCTION(BlueprintPure, Category="Spell|Attack")
+	float GetChargeAlpha() const;
+	UFUNCTION(BlueprintPure, Category="Spell|Attack")
+	float GetCooldownRemaining() const;
 	UFUNCTION(BlueprintCallable, Category="Spell")
 	void BeginWeave();
 	UFUNCTION(BlueprintCallable, Category="Spell")
@@ -55,6 +74,10 @@ protected:
 private:
 	FWEVORAGestureRecognizer Recorder;
 	double ShapeStartTime = 0.0;
+	double AttackStartTime = 0.0;
+	double NextAttackTime = 0.0;
+	bool bAttackHeld = false;
+	bool bQuickShapeHeld = false;
 	bool bHasLastCast = false;
 	void SetState(EWEVORAWeavingState NewState);
 	void ClearGesture();

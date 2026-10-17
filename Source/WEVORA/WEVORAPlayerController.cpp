@@ -8,10 +8,21 @@
 #include "Blueprint/UserWidget.h"
 #include "WEVORA.h"
 #include "Widgets/Input/SVirtualJoystick.h"
+#include "UI/WEVORAReticleWidget.h"
 
 void AWEVORAPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
+	if (IsLocalPlayerController() && bShowSpellReticle)
+	{
+		SpellReticleWidget = CreateWidget<UWEVORAReticleWidget>(this);
+		if (SpellReticleWidget)
+		{
+			SpellReticleWidget->ForceVolatile(true);
+			SpellReticleWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
+			SpellReticleWidget->AddToPlayerScreen(10);
+		}
+	}
 
 	// only spawn touch controls on local player controllers
 	if (IsLocalPlayerController() && ShouldUseTouchControls())

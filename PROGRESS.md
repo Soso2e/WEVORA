@@ -1,8 +1,111 @@
 # WEVORA Progress
 
-最終更新: 2026-10-05
+最終更新: 2026-10-17
 
-現在フェーズ: Fire / Windの汎用魔法基盤（実装済み・未確認、Editorビルド/自動確認済み・ユーザーのPIE確認待ち）
+現在フェーズ: workの統合前ベースライン検証（自動検証完了、PIE/Playerの実入力・見た目は人間の確認待ち）
+
+## 2026-10-17 PR #7: work → main 安定化
+
+対象PR: https://github.com/Soso2e/WEVORA/pull/7 （既存Draftを継続）。
+調査開始時は`main=1b5844c`、`work=e758fb8`、17 commits ahead / 0 behind、43ファイル差分。
+ローカルworkをfast-forwardして調査。mainへの直接コミット、マージ、force push、ブランチ削除は行わない。
+
+### 調査・修正
+
+- 既知の移動失敗は、保存済みBlueprint調整値との期待値不一致とテストの着地によるもの。
+  Blueprintの巡航1000 / ダッシュ加算1200 / WASD降下倍率0.9に対し、旧テストはC++初期値1200 / 1800 / 0.8を前提としていた。
+- 実測: Burst前の水平速度1000、低速からのShift直後1502.5。自然落下-588、WASD落下-529.2（比率0.9、30/60/120 fps共通）。
+  BurstAndBrakeの旧条件はAlt検証中に床へ着地し、Z=92.15 / Walkingとなっていた。
+- 移動テストを保存済み設定の加算量・上限・減衰・重力倍率で検証する形へ修正。
+  BurstAndBrakeの開始高度を10000へ上げ、落下を受け止める時間3秒と空中前提のassertを追加。
+  失敗assertを削除して成功扱いにはしていない。ゲームプレイの実装・調整値は変更不要と判断。
+- `LightningHit`を追加。保存済みプレイヤー/敵/発射Blueprintを使い、QでのLightning選択、通常/最大チャージの実sweep命中、HP100→75/50、非燃焼・非変位・追加持続ダメージなしを確認。
+- 移動READMEの空中ジャンプ無料、弾の速度継承が常時有効という古い記述を現行実装へ訂正。
+  詳細な機能範囲・再現コマンド・PIE手順は`Docs/BaselineValidation.md`。
+
+### 今回実行した検証
+
+| 項目 | 結果 / 証跡（Savedはローカルのみ） |
+|---|---|
+| UE 5.8.3 Win64 Development Editor | 成功。`Saved/Logs/BaselineFinalEditorBuild.log` |
+| 修正前 `WEVORA.` 全テスト | 22件中20成功、既知2件失敗を再現。`Saved/Automation/BaselineBefore/index.json` |
+| 修正後 `WEVORA.` 全テスト | **23/23成功、未実行0、テスト警告0・エラー0**。移動7、魔法14、敵AI1、Blueprintルール1。`Saved/Automation/BaselineFinal/index.json` / `Saved/Logs/BaselineFinal.log`。共有用要約`Docs/BaselineAutomationResults.json` |
+| Blueprintコンパイル | 346件成功（/Game内52件を含む）、コンパイルエラー0・警告0・ロード失敗0、終了コード0。保存なし。`Saved/Logs/BaselineBlueprintCompile.log` |
+| Win64 Development Gameコードビルド | 成功。最終テスト修正も含めた再ビルド`Saved/Logs/BaselineFinalPlayerBuild.log` |
+| 既存マップのCook / Stage / Pak / Package / Archive | 成功、UAT終了コード0。`Saved/Logs/BaselinePackaging.log`。最終Player再ビルド後もCook済みデータを使って再Stage/Pak/Package/Archive成功（`BaselineFinalPackaging.log`）。出力`Saved/BaselinePlayer/Windows/WEVORA.exe` |
+| パッケージ版単体起動 | D3D12 / SM6で`Lvl_ThirdPerson`のロード・World開始・452フレームの実行と通常終了を確認、終了コード0。最終再ビルド/再Stage後の再起動も成功。`Saved/Logs/BaselinePlayerRun.log` / `BaselineFinalPlayerRun.log`。`-benchmark -seconds=15`、実入力なし。画面の目視/操作感の成功とは扱わない |
+| アセット保護 | Content / Config追跡対象763ファイルの作業前後SHA-256一致、`.uasset` / `.umap` / Config変更なし。`git lfs fsck`成功、`git diff --check`成功 |
+
+ビルドにはMSVC 14.51（UE推奨14.50より新しい）の警告とエンジンヘッダーの非推奨API警告あり。
+途中の診断用テストのコンパイルエラーは修正済み。CookerがDLLを使用中のリンク失敗（LNK1104）はCook終了後の再リンクで解消。
+Cookでは名前解決警告、Playerではドライバーに伴うTSR 16-bit無効化と初回PSO生成のヒッチ記録あり。
+全ログの警告0や性能検証済みとは主張しない。
+
+### 現在の機能範囲と残課題
+
+- Fire / Wind、通常攻撃、チャージ、4Gesture認識、空中Cast、命中/燃焼/押出、壁遮断、照準共有、敵AI、Blueprintの互換性は上記Headless回帰テストで成功。
+- Lightningは選択・共通Projectile・属性別の仮演出・単発ダメージまで。感電、連鎖、部位別作用は未実装。
+  Shapeは4種あるが配送は共通の弾。Wind×Burningはルール拡張のテスト例で、標準の複合反応としては未設定。
+- レティクルは既存の十字表示。円形化はCombat Playground段階。Lightningのジェスチャートレイル色はWindと共通。
+  正式HUD、Niagara素材差替の実描画、ネットワーク同期、死亡画面/リスポーンは今回対象外。
+- **未検証: PIE/Playerでの実キーボード・マウス入力、照準/操作感、日本語HP/燃焼UI、VFXの見た目、30/60/120 fpsの体感。**
+  `Docs/BaselineValidation.md`末尾の5項目を、人間がPIEとパッケージ版で確認する。
+- マージ判断: コード/自動テスト/アセット保護/Playerビルド・起動の技術的阻害要因は解消。
+  ただし上記の実プレイ確認が残るため**Draft維持、現時点の無条件マージは推奨しない**。
+  人間の確認結果をPR #7へ追記してからDraft解除・mainへの統合を判断する。
+
+以下の過去記録にある失敗・未確認事項は当時の結果。上記の今回結果と区別する。
+
+## 2026-10-08 Player攻撃の確認
+
+### 的の頭上HPと燃焼表示
+
+- Playerの表示Widgetに、既存WEVORAEnemyの頭上`HP 現在 / 最大`と燃焼中の`燃焼中`を追加。画面外・死亡・壁越しは非表示。数字は実HealthComponent、状態はSpellReactionComponentから取得。
+- Enemyに仮炎の発光コーン6個と揺れるオレンジのライトを追加。既存Glow素材を利用、燃焼状態/生存状態に従って表示・停止。炎は当たり判定/影なし、専用サーバーでは非表示。既存Blueprintでも継承、追加素材/移行なし。
+- UE 5.8 Win64 Development Editorビルド成功。関連魔法/敵/TPS照準テスト12/12成功・テスト警告0・失敗0。既存実命中テストへ炎Mesh/Materialの読込、燃焼での表示開始/終了、衝突無効の確認を追加。`Saved/Automation/EnemyStatus/index.json`、`Saved/Logs/EnemyStatusTests.log`。実画面の頭上UI/日本語/仮炎の見た目はPIE確認待ち。
+
+### ジェスチャーの仮トレイル
+
+- E保持中、認識と同じ反転済みLook入力をイベントで表示Widgetへ通知。画面中央から光る軌跡を描く仮トレイルを追加。Fireはオレンジ、Windは水色、白い芯＋淡い外周。尾は約0.45秒でフェードし、次の描き始めでリセット。表示用履歴は最大128点、購読は操作対象変更/Widget終了時に解除。
+- Niagara素材追加なし。認識/魔法/照準の挙動は維持。設定と確認操作は`Source/WEVORA/Spell/README.md`。
+- UE 5.8 Win64 Development Editorビルド成功。既存魔法・TPS照準のHeadlessテスト11/11成功、テスト警告0・失敗0。`Saved/Automation/GestureTrail/index.json`。差分チェック成功。トレイルの実画面表示/見た目はPIE確認待ち。
+
+### 攻撃発動のユーザー確認
+
+- ユーザーから「攻撃ができることは確認できた！」との報告を受領。Playerで攻撃を発動できることを実操作で確認済みとして記録。
+- 案内した操作: 左クリック保持 → E保持中にマウスで形を入力 → Eを離す → 左クリックを離して発射。QでFire / Windを切替。
+- 今回確認できた範囲は攻撃の発動。敵への命中・HP減少、Fireの燃焼、Windの押し出し、各Gesture、飛行中の攻撃、見た目・操作感の詳細は、この報告だけでは確認済みにしない。
+- 実行環境（PIE / 単体起動 / パッケージ版）の明示はないため、Playerビルドの確認結果とは扱わない。今回の変更は確認記録のみ。
+
+### TPS照準改善
+
+- 写真と現行コードを照合。中央にキャラクターが重なるカメラ、レティクル未表示、移動速度の弾への加算、Gesture入力でカメラが動くことを改善対象とした。
+- 肩越しカメラ（SocketOffset: 0/85/55cm）、中央レティクル、RMB保持で距離300cm/FOV70の精密照準、E保持中の視点固定、カメラ回転Lag解除を追加。既存Blueprintのカメラ設定読込後に適用。移動/属性/Gesture判定は維持。
+- レティクルとCastで同じカメラ→対象点→Player発射位置の照準計算を使用。対象は緑、弾半径を含む射線遮断は赤い×。発射位置の壁遮断を維持。飛行速度の弾への加算は明示Opt-inへ変更し、旧Blueprint値の残存でも既定は無効。
+- 肩越し・移動中の実命中とGesture中の視点維持、カメラだけ見通せる遮蔽物の予告/弾停止、至近壁でのSpawn禁止を自動テストへ追加。
+- 初回: 新規UIと照準コードのC++コンパイル成功。開いているUnrealEditorがDLLを保持してリンク失敗（LNK1104）。Editor終了後の再ビルド・新規/既存テストは待機中。PIEの描画/操作感は未確認。
+- ユーザーのEditor終了後、UE 5.8 Win64 Development Editorの再ビルド成功。Headless全20件中18件成功、2件失敗。新規TPSAim/TPSCoverPreviewと既存の魔法・敵・Blueprintルールは成功。失敗は以前の記録と同名の移動`BurstAndBrake` / `HeldHoverAndNaturalFall`（今回の原因比較は未実施）。レポート: `Saved/Automation/TPSAim/index.json`。
+- カメラの左右配置、RMB保持でFOV70へ収束、解除後のFOV復帰もTPSAimに追加。最終再ビルド成功、照準2件の再実行は2/2成功・テスト警告0・失敗0。レポート: `Saved/Automation/TPSAimFinal/index.json`。差分チェック成功。NullRHIによる論理/衝突確認であり、実際のレティクル描画・PIE操作感・Playerビルドは未確認。
+
+## 2026-10-06 移動調整
+
+### Blueprint移行・第一段階（移動/カメラと魔法を優先）
+
+- `BP_ThirdPersonCharacter`へ`CalculateCameraFOV` / `GetSpellMovementTarget` / `ResolveSpellLaunch` / `GetSpellRecoilSpeed`の4関数を追加・保存。速度連動FOV、編み状態別移動倍率、属性/形からの発射データ組み立て、Gesture別反動のルールはBlueprintで編集でき、以降この範囲の変更にC++ビルド不要。
+- C++にBlueprintNativeEventの呼び出し境界と互換フォールバックを追加。物理直前更新、マナ管理、Aim/壁遮断/Spawnはネイティブに維持。無効なBlueprint発射パラメータはSpawn前に拒否。既存の空中ジャンプ消費/部分マナダッシュ、保存済みBlueprint設定とEventGraphを保全。
+- UE 5.8 Windows Editorビルド成功。移行Blueprintの警告をエラー扱いにしたコンパイル成功。新規`WEVORA.Design.BlueprintRules`と魔法テストは成功。全18件中16件成功・2件失敗。
+- 失敗は`WEVORA.Movement.BurstAndBrake` / `HeldHoverAndNaturalFall`。変更前の保存済みBlueprintでも移動7件中5件成功・同じ2件が失敗。比較後は移行アセットを復元しハッシュ一致を確認。既存期待値/調整値の切り分けは未解決、今回の移行回帰と断定しない。
+- 起動時の既存GameFeatureData設定不足エラーで移行コマンドレット終了コード1。Python実行・グラフCompile/Save成功は別途確認済み。ログ全体エラー0とは記録しない。実入力・見た目・操作感はPIE未確認。
+- 調整手順とC++に残す範囲: `Docs/BlueprintDesign.md`。一度限りの移行: `Scripts/migrate_blueprint_design.py`（既存の移行関数を上書きしない）。バックアップ: `Saved/BlueprintDesignBackup/20261006_173612/`。結果: `Saved/Automation/BlueprintDesign/index.json`、比較: `Saved/Automation/BlueprintDesignBaseline/index.json`。
+
+- 変更前に`git pull --ff-only origin main`を実行し、最新main `1b5844c`と一致を確認。既存の隔離checkout `work`で作業。
+- 空中操舵加速度を新しい`AirSteeringAcceleration`（初期値550 cm/s²、従来2100の約26%）へ分離。地上加速度、ダッシュ追加速度、最高速度、魔法状態の移動倍率は維持。
+- Shift押下時は単発ダッシュ、保持中は水平慣性を残すマナホバー。Enhanced InputのCompleted/CanceledとキーReleasedで保持解除。既存`DoBurst()`は単発APIとして維持し、保持入力向け`DoBurstStart/End`を追加。
+- Altは直接ブレーキ＋ホバー。Ctrl優先、Space上昇、マナ不足時の自然落下、UnPossessでの入力リセットを維持。
+- 無入力時の頂点浮遊・入力猶予・飛行解除後の低重力を廃止。WASD保持中の滑らかな垂直減衰は維持。支え入力をすべて離すと次の移動更新で通常重力に戻る。旧浮遊UPROPERTYとCoasting列挙値はBlueprint互換性のため残す。
+- 既存飛行テストを新仕様に更新し、30/60/120 fpsで自然落下、空中加速、Shift保持/解除/重複押下、Alt直接ホバー、Ctrl優先、マナ不足、操作解除を確認する回帰ケースを追加。
+- 検証済み: 差分と入力経路の静的確認、`git diff --check`。UE_ROOTは設定されているが実体がなく、今回のEditorビルド・Automationテストは未実行。過去の成功記録を今回の検証結果として扱わない。実入力・操作感はPIE確認待ち。
+- 調整値と確認手順: `Source/WEVORA/Movement/README.md`。
 
 ## 現在の状態
 
@@ -111,3 +214,26 @@
 - Asset Registryによる参照証明ができないためVariant 591ファイルは未削除。依存するStateTreeモジュール/Plugin/IncludePath維持。Substrate・Volume/Water/RVT/Local Fog等も未使用を証明できず維持。
 - 検証: Python構文、Mac起動dry-run、LFS fsck、設定/保護Asset一致、git diffチェック。UE APIの実行互換性は未検証。16GB動作・メモリ/Shader削減数は未測定。
 - 次: UE 5.8上で参照監査、Build/全11テスト、Map/Blueprintロードと実RHI Shader検証。人間側で飛行・編み・Cast・命中HP低下と見た目を確認。詳細/再現手順/数値は `Docs/Optimization.md`。
+
+## 2026-10-11 攻撃入力の簡略化
+
+- 通常攻撃をLMB押下・解放だけで発射できるForward弾へ変更。長押しは最大2秒、チャージ率0〜1をContextへ記録し、発射時の基礎Powerに最大2倍を線形乗算。
+- 編み攻撃は「先に狙う → E保持で描く → E解放で発射」。LMBとの同時押し・描いた後の発射操作を省略。描画中の照準固定・Q属性切替・トレイル・手元エフェクトを継続。
+- 両攻撃は共通0.5秒のクールタイム。期間中の押下は予約せず無視。描画認識失敗は消費なし、認識済み発射試行（壁遮断を含む）は消費。異なる攻撃入力の割り込み、回避・降下・操作解除後の遅延解放による誤発射を防止。
+- レティクル下にチャージ量（黄、最大で緑）とクールタイム回復（灰）のゲージを追加。AttackCooldown / MaxChargeTime / MaxChargePowerMultiplierをBlueprintで調整可能。
+- 保存済みBlueprintのResolveSpellLaunchが基礎Powerを組み立てるため、チャージ倍率はその後のC++ HandleCastで適用。初回の等倍になる不具合を保存済みBlueprintを使用するテストで検出・修正。
+- UE 5.8 / Win64 Development Editorビルド成功。エンジンヘッダーの非推奨API警告あり。初回はビルドキャッシュ書き込みの権限制限に当たり、許可後に再実行。
+- Headless最終結果: WEVORA.Spell 12/12成功、全体19/21成功、テスト警告0。失敗はWEVORA.Movement.BurstAndBrakeおよびHeldHoverAndNaturalFall（Shift加速、Altホバー、自然落下等）。飛行側のコード・テストは今回変更せず、失敗の原因と変更前からの再現は未調査。
+- 新テストSimpleAttackは短押し、0.5秒の入力制限、1秒半チャージ・2秒上限・最大保持、保存済みBlueprintでの実発射Power、E単独発射、照準固定、重複入力、認識失敗と途中キャンセル後の解放を確認。
+- 結果: Saved/Automation/SimpleAttack/index.json、ログ: Saved/Logs/SimpleAttackAutomation.log。Editorの終了コードだけで全成功と判定せずJSON結果を確認。
+- PIEの実入力、ゲージの描画・操作感、Playerビルドは未確認。操作手順はSource/WEVORA/Spell/README.md、Blueprintのチャージ適用境界はDocs/BlueprintDesign.mdへ記載。
+
+## 2026-10-14 攻撃・命中エフェクト
+
+- 炎・風・雷を属性別のインスタンスメッシュアニメーションとして実装し、通常/編み攻撃の弾へ接続。色・マテリアル・大きさ・アニメーション速度を編集可能。任意のNiagaraへの置き換えにも対応。
+- 命中対象の衝突面マテリアルを優先し、当たり判定用の球に当たった場合は表示メッシュから取得。動的マテリアルも引き継ぐ破片を生成し、弾消滅後も独立して飛散・縮小・自動消去。衝突なし、最大64個/5秒。
+- 共通発光マテリアルM_AttackEffectと調整用BP_WEVORASpellProjectileを作成。保存済みプレイヤーBlueprintに雷の選択・発射設定を追加。再実行用Scripts/create_attack_effects.pyとDocs/AttackEffects.mdを追加。
+- 雷の標準反応は単発ダメージ。既存の炎・風の反応は保持。
+- UE 5.8 Win64 Development Editorビルド成功。共通PCHの読み込み停止を回避するため-NoPCH/-NoSharedPCHで実施し、既存の敵コードにも必要な型の明示includeを追加。エンジンヘッダーの非推奨API警告あり。
+- HeadlessテストWEVORA.Spell. 13/13成功。新規AttackEffectsテストで三属性の保存済みBlueprint解決、描画メッシュ生成、対象マテリアル取得、弾消滅後の破片の保持・飛散・寿命・衝突無効を確認。結果Saved/Automation/AttackEffects/index.json。
+- 実描画/PIEの見た目、ネットワーク配信、Playerビルドは未確認。

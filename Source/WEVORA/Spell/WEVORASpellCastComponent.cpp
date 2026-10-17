@@ -8,6 +8,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "WEVORA.h"
 #include "WEVORACharacter.h"
+#include "EngineUtils.h"
 
 UWEVORASpellCastComponent::UWEVORASpellCastComponent()
 {
@@ -18,6 +19,10 @@ UWEVORASpellCastComponent::UWEVORASpellCastComponent()
 	Wind.Speed = 2600.0f;
 	Wind.Color = FLinearColor(0.1f, 0.8f, 1.0f);
 	ElementParameters.Add(EWEVORASpellElement::Wind, Wind);
+	FWEVORASpellProjectileParameters Lightning;
+	Lightning.Speed = 3200.0f;
+	Lightning.Color = FLinearColor(0.65f, 0.3f, 1.0f);
+	ElementParameters.Add(EWEVORASpellElement::Lightning, Lightning);
 	FWEVORASpellShapeProfile Forward;
 	Forward.SpeedMultiplier = 1.2f;
 	ShapeProfiles.Add(EWEVORAGesture::Thrust, Forward);
@@ -72,7 +77,20 @@ void UWEVORASpellCastComponent::HandleCast(const FWEVORASpellContext& Context)
 	const UWEVORAHealthComponent* Health = Pawn->FindComponentByClass<UWEVORAHealthComponent>();
 	if (Health && !Health->IsAlive()) { return; }
 	FWEVORASpellLaunch Launch;
-	if (!ResolveSpell(Context, Launch)) { return; }
+	AWEVORACharacter* Pilot = Cast<AWEVORACharacter>(Pawn);
+	if (!(Pilot ? Pilot->ResolveSpellLaunch(Context, Launch) : ResolveSpell(Context, Launch))) { return; }
+	// Apply after Blueprint resolution as saved design graphs also supply base power.
+	if (!FMath::IsFinite(Context.ChargeAlpha) || !FMath::IsFinite(MaxChargePowerMultiplier)) { return; }
+	Launch.Spell.Power *= FMath::Lerp(1.0f, FMath::Max(1.0f, MaxChargePowerMultiplier),
+		FMath::Clamp(Context.ChargeAlpha, 0.0f, 1.0f));
+	// Blueprint rules may supply custom data; reject invalid physics inputs before a sweep or spawn.
+	if (!FMath::IsFinite(Launch.Spell.Power) || Launch.Spell.Power <= 0.0f ||
+		!FMath::IsFinite(Launch.Parameters.Speed) || Launch.Parameters.Speed < 1.0f ||
+		!FMath::IsFinite(Launch.Parameters.Radius) || Launch.Parameters.Radius < 1.0f ||
+		!FMath::IsFinite(Launch.Parameters.Lifetime) || Launch.Parameters.Lifetime < 0.1f)
+	{
+		return;
+	}
 	TSubclassOf<AWEVORASpellDelivery> DeliveryClass;
 	if (const TSubclassOf<AWEVORASpellDelivery>* Configured = DeliveryClasses.Find(Launch.Spell.Delivery))
 	{
@@ -87,53 +105,28 @@ void UWEVORASpellCastComponent::HandleCast(const FWEVORASpellContext& Context)
 		if (bLogEvents) { UE_LOG(LogWEVORA, Log, TEXT("Spell delivery unavailable: %s"), *UEnum::GetValueAsString(Launch.Spell.Delivery)); }
 		return;
 	}
-	FVector ViewLocation;
-	FRotator ViewRotation;
-	Pawn->GetActorEyesViewPoint(ViewLocation, ViewRotation);
-	if (APlayerController* ViewController = Cast<APlayerController>(Pawn->GetController()))
+	FWEVORAAimSolution Aim;
+	if (!GetAimSolution(Launch.Parameters.Radius, Aim) || Aim.bMuzzleBlocked)
 	{
-		ViewController->GetPlayerViewPoint(ViewLocation, ViewRotation);
-	}
-	// Aim at the camera centre, but launch from the player: walls at the player still block the shot.
-	FCollisionObjectQueryParams Objects;
-	Objects.AddObjectTypesToQuery(ECC_WorldStatic);
-	Objects.AddObjectTypesToQuery(ECC_WorldDynamic);
-	Objects.AddObjectTypesToQuery(ECC_Pawn);
-	FCollisionQueryParams Query(SCENE_QUERY_STAT(SpellAim), false, Pawn);
-	const FVector AimEnd = ViewLocation + ViewRotation.Vector() * FMath::Max(1.0f, AimDistance);
-	FHitResult AimHit;
-	const bool bAimHit = GetWorld()->LineTraceSingleByObjectType(AimHit, ViewLocation, AimEnd, Objects, Query);
-	const FVector Origin = Pawn->GetPawnViewLocation();
-	Launch.Direction = ((bAimHit ? AimHit.ImpactPoint : AimEnd) - Origin).GetSafeNormal();
-	if (Launch.Direction.IsNearlyZero() || FVector::DotProduct(Launch.Direction, ViewRotation.Vector()) <= 0.0f)
-	{
-		if (bLogEvents) { UE_LOG(LogWEVORA, Log, TEXT("Spell spawn blocked: camera aim is behind launch origin")); }
+		if (bLogEvents) { UE_LOG(LogWEVORA, Log, TEXT("Spell spawn blocked at muzzle")); }
 		return;
 	}
+	Launch.Direction = Aim.Direction;
 	Launch.Spell.Direction = Launch.Direction;
-	const FVector Start = Origin + Launch.Direction * FMath::Max(0.0f, SpawnDistance);
-	// Sweep the entire launch segment, including the final sphere. Never spawn through a nearby wall.
-	FHitResult MuzzleHit;
-	if (GetWorld()->SweepSingleByObjectType(MuzzleHit, Origin, Start, FQuat::Identity, Objects,
-		FCollisionShape::MakeSphere(Launch.Parameters.Radius), Query))
-	{
-		if (bLogEvents) { UE_LOG(LogWEVORA, Log, TEXT("Spell spawn blocked: %s"), *GetNameSafe(MuzzleHit.GetActor())); }
-		return;
-	}
+	const FVector Start = Aim.Start;
 	const FTransform Transform(Launch.Direction.Rotation(), Start);
 	AWEVORASpellDelivery* Shot = GetWorld()->SpawnActorDeferred<AWEVORASpellDelivery>(
 		DeliveryClass, Transform, Pawn, Pawn, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (!Shot) { return; }
 	const FVector ShooterVelocity = Pawn->GetVelocity();
-	Launch.InheritedVelocity = FVector(ShooterVelocity.X, ShooterVelocity.Y, 0.0f) *
+	Launch.InheritedVelocity = (bInheritShooterVelocity ? FVector(ShooterVelocity.X, ShooterVelocity.Y, 0.0f) : FVector::ZeroVector) *
 		FMath::Clamp(HorizontalVelocityInheritance, 0.0f, 1.0f);
 	Shot->bLogEvents = bLogEvents;
 	Shot->InitializeSpell(Launch);
 	UGameplayStatics::FinishSpawningActor(Shot, Transform);
-	if (AWEVORACharacter* Pilot = Cast<AWEVORACharacter>(Pawn))
+	if (Pilot)
 	{
-		Pilot->ApplySpellLaunchFeedback(Launch.Direction,
-			Context.Gesture == EWEVORAGesture::Thrust ? ThrustRecoilSpeed : RecoilSpeed);
+		Pilot->ApplySpellLaunchFeedback(Launch.Direction, Pilot->GetSpellRecoilSpeed(Context));
 	}
 	if (bLogEvents)
 	{
@@ -141,4 +134,57 @@ void UWEVORASpellCastComponent::HandleCast(const FWEVORASpellContext& Context)
 			*GetNameSafe(Shot), *UEnum::GetValueAsString(Context.Element), *UEnum::GetValueAsString(Launch.Spell.Shape),
 			*Launch.Direction.ToCompactString(), Launch.Spell.Power, Launch.Parameters.Speed);
 	}
+}
+
+bool UWEVORASpellCastComponent::GetAimSolution(float Radius, FWEVORAAimSolution& OutAim) const
+{
+	OutAim = FWEVORAAimSolution();
+	const APawn* Pawn = Cast<APawn>(GetOwner());
+	if (!Pawn || !Pawn->GetController() || !GetWorld()) { return false; }
+	FVector ViewLocation;
+	FRotator ViewRotation;
+	Pawn->GetActorEyesViewPoint(ViewLocation, ViewRotation);
+	if (const APlayerController* PC = Cast<APlayerController>(Pawn->GetController()))
+	{
+		PC->GetPlayerViewPoint(ViewLocation, ViewRotation);
+	}
+	FCollisionObjectQueryParams Objects;
+	Objects.AddObjectTypesToQuery(ECC_WorldStatic);
+	Objects.AddObjectTypesToQuery(ECC_WorldDynamic);
+	Objects.AddObjectTypesToQuery(ECC_Pawn);
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(SpellAim), false, Pawn);
+	// Existing bolts must not become the next shot's camera target or block its muzzle.
+	for (TActorIterator<AWEVORASpellDelivery> It(GetWorld()); It; ++It) { Query.AddIgnoredActor(*It); }
+	OutAim.Target = ViewLocation + ViewRotation.Vector() * FMath::Max(1.0f, AimDistance);
+	FHitResult CameraHit;
+	if (GetWorld()->LineTraceSingleByObjectType(CameraHit, ViewLocation, OutAim.Target, Objects, Query))
+	{
+		OutAim.Target = CameraHit.ImpactPoint;
+		const UWEVORAHealthComponent* Health = CameraHit.GetActor()
+			? CameraHit.GetActor()->FindComponentByClass<UWEVORAHealthComponent>() : nullptr;
+		OutAim.bTargetIsDamageable = Health && Health->IsAlive();
+	}
+	const FVector Origin = Pawn->GetPawnViewLocation();
+	OutAim.Direction = (OutAim.Target - Origin).GetSafeNormal();
+	OutAim.Start = Origin + OutAim.Direction * FMath::Max(0.0f, SpawnDistance);
+	if (OutAim.Direction.IsNearlyZero() || FVector::DotProduct(OutAim.Direction, ViewRotation.Vector()) <= 0.0f)
+	{
+		OutAim.bBlocked = OutAim.bMuzzleBlocked = true;
+		OutAim.Obstruction = Origin;
+		return true;
+	}
+	FHitResult Hit;
+	const FCollisionShape Sphere = FCollisionShape::MakeSphere(FMath::Max(1.0f, Radius));
+	if (GetWorld()->SweepSingleByObjectType(Hit, Origin, OutAim.Start, FQuat::Identity, Objects, Sphere, Query))
+	{
+		OutAim.bBlocked = OutAim.bMuzzleBlocked = true;
+		OutAim.Obstruction = Hit.ImpactPoint;
+	}
+	else if (GetWorld()->SweepSingleByObjectType(Hit, OutAim.Start, OutAim.Target, FQuat::Identity, Objects, Sphere, Query)
+		&& (!CameraHit.GetActor() || Hit.GetActor() != CameraHit.GetActor()))
+	{
+		OutAim.bBlocked = true;
+		OutAim.Obstruction = Hit.ImpactPoint;
+	}
+	return true;
 }

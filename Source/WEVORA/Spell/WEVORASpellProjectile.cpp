@@ -1,8 +1,10 @@
 #include "Spell/WEVORASpellProjectile.h"
+#include "Spell/WEVORASpellEffectComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
 #include "GameFramework/Pawn.h"
+#include "Engine/StaticMesh.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "UObject/ConstructorHelpers.h"
@@ -14,6 +16,8 @@ AWEVORASpellProjectile::AWEVORASpellProjectile()
 	InitialLifeSpan = 4.0f;
 	Collision = CreateDefaultSubobject<USphereComponent>(TEXT("Collision"));
 	SetRootComponent(Collision);
+	AttackEffect = CreateDefaultSubobject<UWEVORASpellEffectComponent>(TEXT("AttackEffect"));
+	AttackEffect->SetupAttachment(Collision);
 	Collision->InitSphereRadius(16.0f);
 	Collision->SetCollisionProfileName(TEXT("BlockAllDynamic"));
 	Collision->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
@@ -57,6 +61,8 @@ void AWEVORASpellProjectile::InitializeSpell_Implementation(const FWEVORASpellLa
 void AWEVORASpellProjectile::BeginPlay()
 {
 	Super::BeginPlay();
+	AttackEffect->StartEffect(Launch);
+	Visual->SetVisibility(false);
 	if (APawn* Shooter = GetInstigator()) { Shooter->MoveIgnoreActorAdd(this); }
 	Movement->Velocity = Launch.Direction * Launch.Parameters.Speed +
 		FVector(Launch.InheritedVelocity.X, Launch.InheritedVelocity.Y, 0.0f);
@@ -76,6 +82,7 @@ void AWEVORASpellProjectile::OnHit(UPrimitiveComponent* HitComponent, AActor* Ot
 {
 	if (bHitConsumed || OtherActor == GetOwner() || OtherActor == GetInstigator()) { return; }
 	bHitConsumed = true;
+	AttackEffect->SpawnImpact(Hit);
 	Movement->StopMovementImmediately();
 	const bool bApplied = DeliverToTarget(OtherActor, Hit);
 	if (bLogEvents)

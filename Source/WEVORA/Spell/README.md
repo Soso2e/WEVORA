@@ -1,8 +1,50 @@
 # Spell Weaving Prototype
 
-操作: LMB押下 → Eを押しながらマウス入力 → E解放 → LMB解放でCast。
+操作（2026-10-09）:
+
+- 通常攻撃: LMBを押して離すとForward弾を発射。短いクリックでも使えます。
+- チャージ攻撃: LMB長押し → 離して発射。最大2秒で威力2倍（途中は線形に増加）。最大到達後も離すまで保持します。
+- 編み攻撃: 先に照準を合わせる → Eを押しながらマウスで描く → Eを離して発射。LMBは不要です。
+- 共通クールタイムは発射入力から0.5秒。期間中に押した入力は予約せず、再度押してください。
+- 照準の下にチャージ量（黄、最大で緑）とクールタイム回復（灰色）を表示します。
+- 描画が認識できない場合はキャンセル。クールタイムは発生しません。発射位置が壁で塞がれている場合の発射試行にはクールタイムが発生します。
+- 通常攻撃中のE、編み中のLMBは無視します。回避・降下・操作解除によるキャンセル後にキーを離しても発射しません。
+
+調整: WeavingComponentの`AttackCooldown` / `MaxChargeTime`、CastComponentの`MaxChargePowerMultiplier`。
+チャージはFireのダメージ・燃焼、Windの押し出し・浮かせに適用。編み攻撃の威力は従来値です。
 QでFire/Windを切り替えます。編み中・Shape確定後も変更でき、次回も属性を保持します。
-Eを再度押すとShapeを作り直します。未確定状態でLMBを離すとキャンセルします。
+旧`BeginWeave / BeginShape / EndShape / ReleaseWeave` APIは構成処理用に維持。実入力は
+`BeginAttack / ReleaseAttack` と `BeginQuickShape / EndQuickShape`へ接続しています。
+
+## TPS照準（2026-10-08）
+
+- 右肩越しカメラ。キャラクターを画面中央から左へずらし、中央レティクルで狙います。
+- 右クリック保持で精密照準（カメラ距離300cm・FOV70）。解除で通常の距離・速度連動FOVへ滑らかに戻ります。
+- レティクルは白が通常、緑が生存中のHealthComponentを持つ対象、赤い×が射線遮断。敵の自動追尾・ロックオンは行いません。
+- E保持中のマウス操作は形の入力に使い、カメラの向きを固定します。E解放で直ちに発射するため、描く前に敵を狙います。LMBのチャージ中は通常通り照準を調整できます。
+- カメラ中央から対象点を求め、Playerの発射位置からその点へ弾を飛ばします。レティクルと発射処理は同じ`GetAimSolution`を使用します。
+- 弾の半径を含めてPlayerからの射線を検査。肩越しに敵が見えていても壁が弾を遮る場合は赤い×になります。発射直前の壁はSpawnを止め、それより先の壁には弾が衝突します。
+- 移動速度の弾への加算は既定で無効。保存済みBlueprintに旧`HorizontalVelocityInheritance=0.4`が残っていても`bInheritShooterVelocity=false`なら照準から横へずれません。旧挙動への明示的な切替時は予告弾道とずれます。
+- 既存の魔法弾は照準・発射位置の検査対象から除外。弾速・寿命・実衝突・属性効果は維持。動いている敵には弾の飛行時間を考慮した先読みが必要です。
+
+調整: Characterの`WEVORA Aim`で`ShoulderOffset` / `AimArmLength` / `AimFOV` / `bHoldViewWhileShaping`。
+Controllerの`bShowSpellReticle`で表示切替。追加Widget素材・Blueprint移行は不要です。
+
+実プレイ確認: Editorを再起動して、(1) 中央に照準・キャラが左側、(2) 敵に合わせると緑、
+(3) RMB保持/解除、(4) Eで描いても照準が動かない、(5) 静止/横移動/飛行から命中、
+(6) 壁の右側からカメラだけ覗いた時は赤い×と壁への衝突、(7) 至近距離、上下の敵、画面比率を確認してください。
+
+カメラ実装の参考: [Epic公式 Spring Arm資料](https://dev.epicgames.com/documentation/en-us/unreal-engine/using-spring-arm-components-in-unreal-engine)。
+
+### 描画トレイル（仮）
+
+E保持中にマウスを動かすと、中央から光る軌跡が伸びます。
+Fireはオレンジ、Windは水色。白い芯と薄い外周を重ね、尾は約0.45秒で消えます。
+Eを離す・発射・キャンセル後も残った尾が自然に消え、次の描き始めでリセットします。
+認識と同じ反転済み入力を表示用イベントで受け取り、判定・照準には影響しません。
+表示は画面上の仮エフェクトで、追加Niagara素材は不要。最大128点に制限しています。
+`WEVORAReticleWidget`の`bShowGestureTrail` / `TrailInputScale` / `TrailLifetime`で調整できます。
+レティクルWidgetを非表示にするとトレイルも非表示になります。
 
 ## 構造
 
@@ -29,7 +71,7 @@ Cast通知はCharacterの`SpellCastComponent`が購読し、共通Projectileを�
 
 責務: `Element × Shape × Delivery × Target State → Reaction`。
 
-- Weaving: 既存のQ / LMB / E / GestureRecognizer / Cast / Cancelを維持。
+- Weaving: Q選択 / LMBチャージ / E単独の描画発射 / GestureRecognizer / Cast / Cancel。
   `AvailableElements`で切替順を設定。今回の属性はFire / Windのみ。
 - Spell Data: `FWEVORASpellData`にElement / Shape / Delivery / Power / 世界座標Direction。
   Powerは初期値1の倍率。画面の入力方向・軌跡は従来のContextに残す。
@@ -75,15 +117,15 @@ Cast通知はCharacterの`SpellCastComponent`が購読し、共通Projectileを�
 
 1. Editorを再起動して新しいC++クラスを読み込み、通常のGameModeでPlay。
 2. Viewportをクリック。初期属性Fire。QでFire / Wind切替。
-3. LMBを押したままEを押し、**マウスを上へ動かして**Eを離す。
-   既存表示で`Thrust / ReadyToCast`を確認。Thrustが世界の`Forward`に対応する。
-4. LMBは保持したまま敵を画面中央へ狙い直し、LMBを離してCast。
+3. 敵を画面中央に合わせ、LMBを短く押して離すと通常弾。長押しではゲージが2秒で最大になり、離してチャージ弾。
+4. 編み攻撃は敵に照準を合わせ、Eを押して**マウスを上へ動かし**、Eを離すだけでCast。
+   `Last Cast: Thrust`を確認。Thrustが世界の`Forward`に対応する。
    地上でも空中でも可能。空中ならSpaceでジャンプ、左Altでホバー。
 5. Fire: 球が敵へ命中しHP表示が減る。約3秒の燃焼でもHPが減る。
    敵の`HealthComponent / Show Damage Feedback`を有効にするとHPを画面で確認できる。
 6. QでWindを選び同じ操作。命中時に敵が後方・上方へ動き、追尾・射撃が一時停止して再開する。
    Wind単体はHPを減らさない。Fire後は残っている燃焼でHPが減る点に注意。
-7. E解放前のLMB解放はCancel。壁へ撃つと弾が消え、壁越しには作用しない。
+7. Eを押して動かさず離すとCancel。Shift回避・Ctrl降下でも途中キャンセル。壁へ撃つと弾が消え、壁越しには作用しない。
 8. Stop → Playで敵HPと状態をリセット。動きながらの狙いやすさ、押し出し量、Liftの高さは人間が判断する。
 
 狙いやすさだけを見る場合は配置した敵のMove Speedを0、Attack Intervalを長めに調整できる。
@@ -130,7 +172,7 @@ Reaction Ruleの照合は**着弾前の状態**で一括実行するため、Rul
 結果:`Saved/Automation/SpellFoundationFinal/index.json`、ログ:`Saved/Logs/SpellFoundationFinal.log`。
 
 次は人間のPIE確認後、Sweep / AreaのDeliveryを1種類ずつ追加してShapeの違いを遊びへ反映する。
-その後、燃焼中の対象を分かりやすくする仮表示と、Wind × Burningの具体的な作用を1Ruleだけ追加する。
+燃焼中の対象の頭上HP/状態と仮炎表示は2026-10-08に追加（`AI/README.md`）。Wind × Burningの具体的な作用は今後1Ruleだけ追加する。
 正式VFX / UI、追加属性、ネットワーク同期は今回対象外。
 
 ## 魔法選択エフェクト
@@ -139,7 +181,7 @@ Characterの`SpellSelectionEffectComponent`が、`OnSpellPresentationChanged`を
 認識処理と見た目を分離し、Tickで状態を監視せず、選択・状態の変更時だけ更新します。
 
 - Qで属性切替: 体から選択属性を`Selection Preview Duration`秒表示（初期値0.35秒、内部名IdlePreviewDuration）。編み中にも体から表示、連続切替で延長。
-- LMB押下から編み中・Shape確定まで: 右手に現在の属性を継続表示。Qで右手の属性も更新。
+- LMBチャージ中またはEで編み中: 右手に現在の属性を継続表示。Qで右手の属性も更新。
 - Cast、途中キャンセル、操作キャラクターの解除: 即時停止。
 - EndPlay: タイマー、通知購読、生成した表示コンポーネントを解放。
 
@@ -188,3 +230,5 @@ Niagara素材設定後はUser Parameterの反映と、繰り返し操作で表�
   `AI/WEVORAEnemy.h/.cpp`、`Tests/WEVORASpellCombatTests.cpp`（すべて`Source/WEVORA`内）。
 - 文書: `Source/WEVORA/Spell/README.md`、`Source/WEVORA/AI/README.md`、`PROGRESS.md`。
 - Map / Blueprintのアセットは変更せず、既存保存済みアセットへのネイティブComponent継承を検証。
+
+攻撃の炎・風・雷エフェクトと命中時の破片の調整方法は [Docs/AttackEffects.md](../../../Docs/AttackEffects.md) を参照。

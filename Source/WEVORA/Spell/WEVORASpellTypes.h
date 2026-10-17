@@ -4,7 +4,7 @@
 #include "WEVORASpellTypes.generated.h"
 
 UENUM(BlueprintType)
-enum class EWEVORASpellElement : uint8 { Fire, Wind };
+enum class EWEVORASpellElement : uint8 { Fire, Wind, Lightning };
 
 UENUM(BlueprintType)
 enum class EWEVORAGesture : uint8 { None, Thrust, Sweep, Circle, Slam };
@@ -67,6 +67,11 @@ struct WEVORA_API FWEVORASpellContext
 	float GestureMagnitude = 0.0f;
 	UPROPERTY(BlueprintReadOnly, Category="Spell")
 	float GestureDuration = 0.0f;
+	/** Normal attack charge, independent of gesture recording duration. */
+	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	float ChargeDuration = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	float ChargeAlpha = 0.0f;
 };
 
 /** Resolved runtime behaviour, separate from gesture recognition and named spells. */
@@ -89,16 +94,16 @@ USTRUCT(BlueprintType)
 struct WEVORA_API FWEVORASpellLaunch
 {
 	GENERATED_BODY()
-	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	UPROPERTY(BlueprintReadWrite, Category="Spell")
 	FWEVORASpellContext Composition;
-	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	UPROPERTY(BlueprintReadWrite, Category="Spell")
 	FWEVORASpellData Spell;
-	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	UPROPERTY(BlueprintReadWrite, Category="Spell")
 	FVector Direction = FVector::ForwardVector;
 	/** Shooter planar velocity contribution captured before recoil. */
-	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	UPROPERTY(BlueprintReadWrite, Category="Spell")
 	FVector InheritedVelocity = FVector::ZeroVector;
-	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	UPROPERTY(BlueprintReadWrite, Category="Spell")
 	FWEVORASpellProjectileParameters Parameters;
 };
 
