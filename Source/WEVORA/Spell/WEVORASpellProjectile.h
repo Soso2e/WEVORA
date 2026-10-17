@@ -29,11 +29,13 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
 	TObjectPtr<UProjectileMovementComponent> Movement;
 	virtual void InitializeSpell_Implementation(const FWEVORASpellLaunch& InLaunch) override;
+	virtual void Tick(float DeltaSeconds) override;
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 private:
 	bool bHitConsumed = false;
+	FVector PreviousDebugPosition;
 	UFUNCTION()
 	void OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent,
 		FVector NormalImpulse, const FHitResult& Hit);

@@ -48,6 +48,24 @@ struct WEVORA_API FWEVORASpellShapeProfile
 	float SpeedMultiplier = 1.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="0.01"))
 	float RadiusMultiplier = 1.0f;
+	/** Sweeps use Range/Width/Height; Field/Area use Width as their radius. cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Volume", meta=(ClampMin="1"))
+	float Range = 900;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Volume", meta=(ClampMin="1"))
+	float Width = 600;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Volume", meta=(ClampMin="1"))
+	float Height = 180;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Volume", meta=(ClampMin="0.05"))
+	float Duration = 2.4f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Volume", meta=(ClampMin="0.1"))
+	float PulseInterval = 0.6f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Volume", meta=(ClampMin="0.01"))
+	float PowerMultiplier = 1;
+	/** Extra reward for a drawn gesture; normal LMB has zero gesture magnitude. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Weaving", meta=(ClampMin="0.01"))
+	float WovenSpeedMultiplier = 1;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Weaving", meta=(ClampMin="0.01"))
+	float WovenPowerMultiplier = 1;
 };
 
 /** Input-space measurements, independent of movement and eventual spell effects. */
@@ -85,6 +103,9 @@ struct WEVORA_API FWEVORASpellProjectileParameters
 	float Radius = 16.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="0.1"))
 	float Lifetime = 4.0f;
+	/** Zero preserves legacy lifetime-only range; positive values cap straight travel distance. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="0", Units="cm"))
+	float MaxDistance = 0;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
 	FLinearColor Color = FLinearColor(1.0f, 0.15f, 0.02f);
 };
@@ -105,6 +126,28 @@ struct WEVORA_API FWEVORASpellLaunch
 	FVector InheritedVelocity = FVector::ZeroVector;
 	UPROPERTY(BlueprintReadWrite, Category="Spell")
 	FWEVORASpellProjectileParameters Parameters;
+	UPROPERTY(BlueprintReadWrite, Category="Spell|Debug")
+	bool bDebugTrajectory = false;
+	/** Captured geometry/timing, used only by non-projectile delivery implementations. */
+	UPROPERTY(BlueprintReadWrite, Category="Spell")
+	FWEVORASpellShapeProfile Volume;
+};
+
+/** Presentation result emitted AFTER reaction/health resolve. Never controls hit acceptance. */
+USTRUCT(BlueprintType)
+struct WEVORA_API FWEVORASpellImpact
+{
+	GENERATED_BODY()
+	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	TObjectPtr<AActor> Target = nullptr;
+	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	FVector Location = FVector::ZeroVector;
+	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	FWEVORASpellData Spell;
+	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	float DirectDamage = 0;
+	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	bool bApplied = false;
 };
 
 USTRUCT(BlueprintType)

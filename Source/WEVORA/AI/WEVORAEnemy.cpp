@@ -208,3 +208,13 @@ void AWEVORAEnemy::Fire()
 		OnAttackFired();
 	}
 }
+
+void AWEVORAEnemy::ResetCombatState()
+{
+	Target = nullptr;
+	NextAttackTime = GetWorld()->GetTimeSeconds() + FMath::Max(0.1f, AttackInterval);
+	FireTime = 0;
+	SetWindupVisual(false);
+	Movement->StopMovementImmediately();
+	ConsumeMovementInputVector();
+}

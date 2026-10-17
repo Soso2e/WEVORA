@@ -9,10 +9,13 @@
 #include "Kismet/GameplayStatics.h"
 #include "UObject/ConstructorHelpers.h"
 #include "WEVORA.h"
+#include "DrawDebugHelpers.h"
 
 AWEVORASpellProjectile::AWEVORASpellProjectile()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
+	PrimaryActorTick.TickGroup = TG_PostPhysics;
 	InitialLifeSpan = 4.0f;
 	Collision = CreateDefaultSubobject<USphereComponent>(TEXT("Collision"));
 	SetRootComponent(Collision);
@@ -68,7 +71,19 @@ void AWEVORASpellProjectile::BeginPlay()
 		FVector(Launch.InheritedVelocity.X, Launch.InheritedVelocity.Y, 0.0f);
 	// Do not clamp away the shooter velocity contribution on the first movement tick.
 	Movement->MaxSpeed = FMath::Max(Launch.Parameters.Speed, float(Movement->Velocity.Size()));
-	SetLifeSpan(Launch.Parameters.Lifetime);
+	const float RangeLifetime = Launch.Parameters.MaxDistance > 0
+		? Launch.Parameters.MaxDistance / FMath::Max(1.0f, float(Movement->Velocity.Size())) : Launch.Parameters.Lifetime;
+	SetLifeSpan(FMath::Min(Launch.Parameters.Lifetime, RangeLifetime));
+	PreviousDebugPosition = GetActorLocation();
+	SetActorTickEnabled(Launch.bDebugTrajectory);
+}
+
+void AWEVORASpellProjectile::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	DrawDebugLine(GetWorld(), PreviousDebugPosition, GetActorLocation(), Launch.Parameters.Color.ToFColor(true), false, 0.5f, 0, 1);
+	DrawDebugSphere(GetWorld(), GetActorLocation(), Launch.Parameters.Radius, 12, FColor::Yellow, false, 0.1f);
+	PreviousDebugPosition = GetActorLocation();
 }
 
 void AWEVORASpellProjectile::EndPlay(const EEndPlayReason::Type EndPlayReason)
