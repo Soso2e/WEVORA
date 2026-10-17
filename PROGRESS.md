@@ -283,3 +283,7 @@ Cookでは名前解決警告、Playerではドライバーに伴うTSR 16-bit無
 - Zone Profile/Resolver/隣接graphを追加。FName IDとBone/Physics Body/Collider設定を分離。未知BoneはNone。
 - UE5.8 Editorビルド成功。着手前33/33、Stage A 34/34成功。設計: Docs/LocalizedElementalReactions.md。
 
+## Localized Reactions Stage B
+- 汎用局所Statusコンポーネント、4Policy、期限・強度・蓄積・Source/時刻、最大DPS包絡線の区間積分を追加。
+- Healthの死亡/reset通知で即時解除。UE5.8 Editorビルド成功、全36/36テスト成功。30/60/120fpsと4秒hitchで20HPの同一結果を検証。
+

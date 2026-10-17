@@ -24,6 +24,7 @@ void UWEVORAHealthComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void UWEVORAHealthComponent::ResetHealth()
 {
 	if (!GetOwner()->HasAuthority()) { return; }
+	OnReset.Broadcast();
 	MaxHealth = FMath::Max(1.0f, MaxHealth);
 	Health = MaxHealth;
 	OnHealthChanged.Broadcast(Health, MaxHealth);
@@ -32,7 +33,7 @@ void UWEVORAHealthComponent::ResetHealth()
 void UWEVORAHealthComponent::ReceiveDamage(AActor* DamagedActor, float Damage,
 	const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser)
 {
-	if (!GetOwner()->HasAuthority() || !IsAlive() || Damage <= 0.0f) { return; }
+	if (!GetOwner()->HasAuthority() || !IsAlive() || Damage <= 0.0f || !FMath::IsFinite(Damage)) { return; }
 	Health = FMath::Clamp(Health - Damage, 0.0f, MaxHealth);
 	OnHealthChanged.Broadcast(Health, MaxHealth);
 	if (bShowDamageFeedback && GEngine)

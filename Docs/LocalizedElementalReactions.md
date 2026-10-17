@@ -20,4 +20,21 @@ Profileを持たない対象は既存全身反応を維持。局所対応対象�
 同一フレームの局所入力はまとめて確定し、直接付与を反応前に解決する。伝播は共通snapshotを読み、結果をmergeしてから反映する。反応内で新たに生まれた状態を別反応のseedに使わない。
 複数Zoneの燃焼DoTは各瞬間で最大強度の一本に集約する（合計しない）。異なる期限は区間積分し、フレーム時間に左右されない。
 
-以降の段階でAPI、調整値、検証結果、PIE手順を追記する。
+## Stage B: 状態とHP
+
+`UWEVORALocalizedStatusComponent`を任意Actorに追加しProfileまたはbUsePrototypeProfileを設定する。Health/Reactionは別コンポーネント。
+`ApplyStatus / RemoveStatus / HasStatus / GetRemaining / ResetStatuses / AdvanceStatuses`が共通API。`States`は表示用の読み取りsnapshot。
+各状態はZone / Type / Element / Intensity / Accumulation / Remaining / DPS / Source / Instigator / AppliedAt / Policyを持つ。
+Intensityは無次元、DPSは明示値。状態適用そのものはHPを減らさない。DoTはUnreal標準ApplyDamage経由で既存Healthへ送る。
+
+| Policy | 同じZone・Typeへの再適用 |
+|---|---|
+| Replace | 新規値で置換 |
+| Refresh | 強度・蓄積・DPS・残時間をそれぞれ最大値へ |
+| Accumulate | 強度・蓄積・DPSを加算、残時間は最大値 |
+| Extend | 残時間を加算、他の値は最大値 |
+
+全PolicyはIntensity10 / Accumulation100 / Duration30秒 / DPS25の既定上限で制限する。Blueprintで調整可能。
+複数状態のDoTは**最大DPSの包絡線**を期限で区切って積分する。例: 10DPS×1秒と5DPS×3秒の同時状態は20HP。
+30/60/120fpsや4秒のhitchでも同じ総ダメージ。Sourceは最大DPSの状態を使い、同強度はZone/Typeの辞書順で決める。
+HealthのOnDeath / OnResetで即時に状態を破棄しTickを停止する。EndPlayでも解放。新しいTimerは使わない。
