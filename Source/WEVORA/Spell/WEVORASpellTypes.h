@@ -48,6 +48,24 @@ struct WEVORA_API FWEVORASpellShapeProfile
 	float SpeedMultiplier = 1.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="0.01"))
 	float RadiusMultiplier = 1.0f;
+	/** Sweeps use Range/Width/Height; Field/Area use Width as their radius. cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Volume", meta=(ClampMin="1"))
+	float Range = 900;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Volume", meta=(ClampMin="1"))
+	float Width = 600;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Volume", meta=(ClampMin="1"))
+	float Height = 180;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Volume", meta=(ClampMin="0.05"))
+	float Duration = 2.4f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Volume", meta=(ClampMin="0.1"))
+	float PulseInterval = 0.6f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Volume", meta=(ClampMin="0.01"))
+	float PowerMultiplier = 1;
+	/** Extra reward for a drawn gesture; normal LMB has zero gesture magnitude. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Weaving", meta=(ClampMin="0.01"))
+	float WovenSpeedMultiplier = 1;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Weaving", meta=(ClampMin="0.01"))
+	float WovenPowerMultiplier = 1;
 };
 
 /** Input-space measurements, independent of movement and eventual spell effects. */
@@ -110,6 +128,9 @@ struct WEVORA_API FWEVORASpellLaunch
 	FWEVORASpellProjectileParameters Parameters;
 	UPROPERTY(BlueprintReadWrite, Category="Spell|Debug")
 	bool bDebugTrajectory = false;
+	/** Captured geometry/timing, used only by non-projectile delivery implementations. */
+	UPROPERTY(BlueprintReadWrite, Category="Spell")
+	FWEVORASpellShapeProfile Volume;
 };
 
 USTRUCT(BlueprintType)

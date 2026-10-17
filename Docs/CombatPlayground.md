@@ -34,6 +34,23 @@ Fireは直撃25＋燃焼5/s×3秒、Windは押出900＋Lift220、Lightningは単
 - 赤表示は射線遮断予告。発射元に障害物があれば発射禁止。途中の壁には弾が衝突する（環境への着弾検証も維持する）。
 - 調整箇所: マップ内`Combat Playground - tuning and reset`のShooting／Tuning。発射位置・寿命・速度継承は専用PlayerのSpellCastComponent。
 
+## Stage C: 少数のDeliveryから形を組み立てる
+
+専用PlayerのSpellCastComponent → Shape ProfilesとDelivery Classesで変更する。旧Playerは4ShapeすべてProjectileのまま。
+
+| 入力 | 配送・役割 | 初期仮説 |
+|---|---|---|
+| LMB短押し／保持解放 | 直線弾、ChargeでPower／半径増加 | Fire2640、Wind3120、Lightning12000cm/s、CT0.5秒 |
+| E＋上へ直線 Thrust | 同じ直線Delivery、描いた入力への報酬 | 速度1.4倍、Power1.25倍、手動偏差撃ち |
+| E＋左右 Sweep | 一回の横長volume | 前方1000×左右650×上下200cm、Power0.9、複数対象 |
+| E＋円 Circle | 指定方向の短時間Field | 最大1800cm先、半径380、2.4秒、0.6秒毎、Power0.35 |
+| E＋下 Slam | 足元より前下方へのArea | 半径420cm、Power1.5、近距離のリターン |
+
+Sweep／Field／Areaは同じ`WEVORASpellVolume`。同一pulse内の重複を排除し、各対象へのLOSを確認する。Fieldはtimer駆動で寿命最大5秒、最小間隔0.1秒。
+Field／Slamの中心も手元からのtraceで壁手前へ止める。範囲が壁をまたいでも、壁の向こうの対象は受けない。
+属性効果は既存Reaction Rules。Fireの直撃／燃焼、Windの外力とAI復帰、Lightning単発を維持する。感電・連鎖は追加しない。
+調整スクリプト`Scripts/configure_playground_spells.py`は専用Playerだけを設定し、既にDelivery Classesが設定済みなら停止する。
+
 ## 検証記録
 
 着手前の`WEVORA.`: 23/23成功（`Saved/Automation/PlaygroundBefore/index.json`）。

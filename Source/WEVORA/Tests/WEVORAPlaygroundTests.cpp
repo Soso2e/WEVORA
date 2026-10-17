@@ -8,6 +8,7 @@
 #include "Spell/WEVORASpellWeavingComponent.h"
 #include "Spell/WEVORASpellProjectile.h"
 #include "Spell/WEVORASpellCastComponent.h"
+#include "Spell/WEVORASpellVolume.h"
 #include "Movement/WEVORAManaComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
@@ -17,6 +18,7 @@
 #include "GameFramework/DamageType.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/SphereComponent.h"
+#include "Components/BoxComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include <limits>
 
@@ -181,6 +183,67 @@ bool FPlaygroundBallisticsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Distance cap expires unhit bolt"), Shot->IsActorBeingDestroyed());
 	Trial->ProjectileRadiusMultiplier = std::numeric_limits<float>::quiet_NaN();
 	TestFalse(TEXT("Invalid tuning rejected before physics"), Player->SpellCastComponent->ResolveCastLaunch(Context, Lightning));
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaygroundShapeTest, "WEVORA.Playground.SweepFieldAndOcclusion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FPlaygroundShapeTest::RunTest(const FString& Parameters)
+{
+	FPlaygroundWorld Scene;
+	AWEVORAPlaygroundTarget* Center = Scene.Target(FVector(700,0,500));
+	AWEVORAPlaygroundTarget* Side = Scene.Target(FVector(700,450,500));
+	AWEVORAPlaygroundTarget* Far = Scene.Target(FVector(2000,0,500));
+	FWEVORASpellLaunch Launch;
+	Launch.Spell.Element = EWEVORASpellElement::Lightning; // Isolate direct damage from burn.
+	Launch.Spell.Shape = EWEVORASpellShape::Sweep;
+	Launch.Spell.Delivery = EWEVORASpellDelivery::Sweep;
+	Launch.Direction = FVector::ForwardVector;
+	Launch.Volume.Range = 1000;
+	Launch.Volume.Width = 650;
+	Launch.Volume.Height = 200;
+	auto Deliver = [&](FVector Location)
+	{
+		const FTransform Transform(FRotator::ZeroRotator, Location);
+		AWEVORASpellVolume* Volume = Scene.World->SpawnActorDeferred<AWEVORASpellVolume>(AWEVORASpellVolume::StaticClass(), Transform);
+		Volume->InitializeSpell(Launch);
+		Volume->FinishSpawning(Transform);
+		return Volume;
+	};
+	Deliver(FVector(0,0,500));
+	TestEqual(TEXT("Sweep reaches center"), Center->HealthComponent->Health, 75.0f);
+	TestEqual(TEXT("Sweep reaches off-axis target in one cast"), Side->HealthComponent->Health, 75.0f);
+	TestEqual(TEXT("Sweep cannot reach distant target"), Far->HealthComponent->Health, 100.0f);
+	Scene.Step(0.3f);
+	TestEqual(TEXT("Single sweep never ticks repeat damage"), Side->HealthComponent->Health, 75.0f);
+	AActor* Wall = Scene.World->SpawnActor<AActor>();
+	UBoxComponent* Box = NewObject<UBoxComponent>(Wall);
+	Wall->AddInstanceComponent(Box);
+	Wall->SetRootComponent(Box);
+	Box->SetBoxExtent(FVector(20,1000,500));
+	Box->SetCollisionProfileName(TEXT("BlockAll"));
+	Box->RegisterComponent();
+	Wall->SetActorLocation(FVector(350,0,500));
+	Deliver(FVector(0,0,500));
+	TestEqual(TEXT("Wall rejects wide attack damage"), Side->HealthComponent->Health, 75.0f);
+	Wall->Destroy();
+	Center->ResetTarget();
+	Side->ResetTarget();
+	Launch.Spell.Shape = EWEVORASpellShape::Circle;
+	Launch.Spell.Delivery = EWEVORASpellDelivery::Field;
+	Launch.Spell.Power = 0.2f;
+	Launch.Volume.Width = 150;
+	Launch.Volume.PulseInterval = 0.2f;
+	Launch.Volume.Duration = 0.55f;
+	AWEVORASpellVolume* Field = Deliver(Center->GetActorLocation());
+	TestEqual(TEXT("Circle begins with bounded pulse"), Center->HealthComponent->Health, 95.0f);
+	Scene.Step(0.45f);
+	TestEqual(TEXT("Circle sustains control in one area"), Center->HealthComponent->Health, 85.0f);
+	TestEqual(TEXT("Field is local"), Side->HealthComponent->Health, 100.0f);
+	Scene.Step(0.3f);
+	TestTrue(TEXT("Field expires"), Field->IsActorBeingDestroyed());
+	const float EndHealth = Center->HealthComponent->Health;
+	Scene.Step(0.4f);
+	TestEqual(TEXT("Expired field has no lingering timer damage"), Center->HealthComponent->Health, EndHealth);
 	return true;
 }
 #endif

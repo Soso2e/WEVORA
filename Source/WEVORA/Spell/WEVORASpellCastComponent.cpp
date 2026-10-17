@@ -103,7 +103,18 @@ void UWEVORASpellCastComponent::HandleCast(const FWEVORASpellContext& Context)
 	Launch.Direction = Aim.Direction;
 	Launch.Spell.Direction = Launch.Direction;
 	const FVector Start = Aim.Start;
-	const FTransform Transform(Launch.Direction.Rotation(), Start);
+	FVector DeliveryStart = Start;
+	if (Launch.Spell.Delivery == EWEVORASpellDelivery::Field || Launch.Spell.Delivery == EWEVORASpellDelivery::Area)
+	{
+		const FVector Desired = Launch.Spell.Delivery == EWEVORASpellDelivery::Field
+			? Start + Launch.Direction * FMath::Min(Launch.Volume.Range, float(FVector::Dist(Start, Aim.Target)))
+			: Start + Launch.Direction * FMath::Min(250.0f, Launch.Volume.Range) - FVector(0,0,180);
+		FCollisionQueryParams Query(SCENE_QUERY_STAT(SpellVolumePlacement), false, Pawn);
+		FHitResult Placement;
+		DeliveryStart = GetWorld()->LineTraceSingleByChannel(Placement, Start, Desired, ECC_Visibility, Query)
+			? Placement.ImpactPoint + Placement.ImpactNormal * 8 : Desired;
+	}
+	const FTransform Transform(Launch.Direction.Rotation(), DeliveryStart);
 	AWEVORASpellDelivery* Shot = GetWorld()->SpawnActorDeferred<AWEVORASpellDelivery>(
 		DeliveryClass, Transform, Pawn, Pawn, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (!Shot) { return; }
@@ -142,6 +153,16 @@ bool UWEVORASpellCastComponent::ResolveCastLaunch(const FWEVORASpellContext& Con
 		Launch.Parameters.MaxDistance = Trial->ProjectileRange;
 		Launch.Spell.Power *= Trial->DamageMultiplier;
 		Launch.bDebugTrajectory = Trial->bDebugOverlay;
+	}
+	if (const FWEVORASpellShapeProfile* Shape = ShapeProfiles.Find(Context.Gesture))
+	{
+		Launch.Volume = *Shape;
+		Launch.Spell.Power *= Shape->PowerMultiplier;
+		if (Context.GestureMagnitude > 0)
+		{
+			Launch.Parameters.Speed *= Shape->WovenSpeedMultiplier;
+			Launch.Spell.Power *= Shape->WovenPowerMultiplier;
+		}
 	}
 	// Blueprint rules may supply custom data; reject invalid physics inputs before a sweep or spawn.
 	if (!FMath::IsFinite(Launch.Spell.Power) || Launch.Spell.Power <= 0.0f ||
