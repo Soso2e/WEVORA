@@ -10,6 +10,10 @@ class WEVORA_API UWEVORAReticleWidget : public UUserWidget
 {
 	GENERATED_BODY()
 public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Reticle", meta=(ClampMin="8"))
+	float TravelRadius = 52;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Reticle", meta=(ClampMin="8"))
+	float PrecisionRadius = 28;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Enemy Status")
 	bool bShowEnemyStatus = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell Trail")

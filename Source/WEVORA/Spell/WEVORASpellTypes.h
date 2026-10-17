@@ -85,6 +85,9 @@ struct WEVORA_API FWEVORASpellProjectileParameters
 	float Radius = 16.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="0.1"))
 	float Lifetime = 4.0f;
+	/** Zero preserves legacy lifetime-only range; positive values cap straight travel distance. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell", meta=(ClampMin="0", Units="cm"))
+	float MaxDistance = 0;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
 	FLinearColor Color = FLinearColor(1.0f, 0.15f, 0.02f);
 };
@@ -105,6 +108,8 @@ struct WEVORA_API FWEVORASpellLaunch
 	FVector InheritedVelocity = FVector::ZeroVector;
 	UPROPERTY(BlueprintReadWrite, Category="Spell")
 	FWEVORASpellProjectileParameters Parameters;
+	UPROPERTY(BlueprintReadWrite, Category="Spell|Debug")
+	bool bDebugTrajectory = false;
 };
 
 USTRUCT(BlueprintType)

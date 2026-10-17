@@ -9,6 +9,7 @@
 #include "WEVORA.h"
 #include "WEVORACharacter.h"
 #include "EngineUtils.h"
+#include "Playground/WEVORACombatPlayground.h"
 
 UWEVORASpellCastComponent::UWEVORASpellCastComponent()
 {
@@ -78,19 +79,7 @@ void UWEVORASpellCastComponent::HandleCast(const FWEVORASpellContext& Context)
 	if (Health && !Health->IsAlive()) { return; }
 	FWEVORASpellLaunch Launch;
 	AWEVORACharacter* Pilot = Cast<AWEVORACharacter>(Pawn);
-	if (!(Pilot ? Pilot->ResolveSpellLaunch(Context, Launch) : ResolveSpell(Context, Launch))) { return; }
-	// Apply after Blueprint resolution as saved design graphs also supply base power.
-	if (!FMath::IsFinite(Context.ChargeAlpha) || !FMath::IsFinite(MaxChargePowerMultiplier)) { return; }
-	Launch.Spell.Power *= FMath::Lerp(1.0f, FMath::Max(1.0f, MaxChargePowerMultiplier),
-		FMath::Clamp(Context.ChargeAlpha, 0.0f, 1.0f));
-	// Blueprint rules may supply custom data; reject invalid physics inputs before a sweep or spawn.
-	if (!FMath::IsFinite(Launch.Spell.Power) || Launch.Spell.Power <= 0.0f ||
-		!FMath::IsFinite(Launch.Parameters.Speed) || Launch.Parameters.Speed < 1.0f ||
-		!FMath::IsFinite(Launch.Parameters.Radius) || Launch.Parameters.Radius < 1.0f ||
-		!FMath::IsFinite(Launch.Parameters.Lifetime) || Launch.Parameters.Lifetime < 0.1f)
-	{
-		return;
-	}
+	if (!ResolveCastLaunch(Context, Launch)) { return; }
 	TSubclassOf<AWEVORASpellDelivery> DeliveryClass;
 	if (const TSubclassOf<AWEVORASpellDelivery>* Configured = DeliveryClasses.Find(Launch.Spell.Delivery))
 	{
@@ -134,6 +123,36 @@ void UWEVORASpellCastComponent::HandleCast(const FWEVORASpellContext& Context)
 			*GetNameSafe(Shot), *UEnum::GetValueAsString(Context.Element), *UEnum::GetValueAsString(Launch.Spell.Shape),
 			*Launch.Direction.ToCompactString(), Launch.Spell.Power, Launch.Parameters.Speed);
 	}
+}
+
+bool UWEVORASpellCastComponent::ResolveCastLaunch(const FWEVORASpellContext& Context, FWEVORASpellLaunch& Launch) const
+{
+	const AWEVORACharacter* Pilot = Cast<AWEVORACharacter>(GetOwner());
+	if (!(Pilot ? Pilot->ResolveSpellLaunch(Context, Launch) : ResolveSpell(Context, Launch))) { return false; }
+	// Apply after Blueprint resolution as saved design graphs also supply base power.
+	if (!FMath::IsFinite(Context.ChargeAlpha) || !FMath::IsFinite(MaxChargePowerMultiplier)) { return false; }
+	Launch.Spell.Power *= FMath::Lerp(1.0f, FMath::Max(1.0f, MaxChargePowerMultiplier),
+		FMath::Clamp(Context.ChargeAlpha, 0.0f, 1.0f));
+	if (const AWEVORACombatPlayground* Trial = AWEVORACombatPlayground::Find(GetWorld()))
+	{
+		if (Context.Element == EWEVORASpellElement::Lightning) { Launch.Parameters.Speed = Trial->LightningSpeed; }
+		Launch.Parameters.Speed *= Trial->ProjectileSpeedMultiplier;
+		Launch.Parameters.Radius *= Trial->ProjectileRadiusMultiplier * FMath::Lerp(1.0f,
+			FMath::Max(1.0f, Trial->ChargedRadiusMultiplier), FMath::Clamp(Context.ChargeAlpha, 0.0f, 1.0f));
+		Launch.Parameters.MaxDistance = Trial->ProjectileRange;
+		Launch.Spell.Power *= Trial->DamageMultiplier;
+		Launch.bDebugTrajectory = Trial->bDebugOverlay;
+	}
+	// Blueprint rules may supply custom data; reject invalid physics inputs before a sweep or spawn.
+	if (!FMath::IsFinite(Launch.Spell.Power) || Launch.Spell.Power <= 0.0f ||
+		!FMath::IsFinite(Launch.Parameters.Speed) || Launch.Parameters.Speed < 1.0f ||
+		!FMath::IsFinite(Launch.Parameters.Radius) || Launch.Parameters.Radius < 1.0f ||
+		!FMath::IsFinite(Launch.Parameters.Lifetime) || Launch.Parameters.Lifetime < 0.1f ||
+		!FMath::IsFinite(Launch.Parameters.MaxDistance) || Launch.Parameters.MaxDistance < 0)
+	{
+		return false;
+	}
+	return true;
 }
 
 bool UWEVORASpellCastComponent::GetAimSolution(float Radius, FWEVORAAimSolution& OutAim) const
@@ -185,6 +204,40 @@ bool UWEVORASpellCastComponent::GetAimSolution(float Radius, FWEVORAAimSolution&
 	{
 		OutAim.bBlocked = true;
 		OutAim.Obstruction = Hit.ImpactPoint;
+	}
+	// Optional narrow, cast-time Lightning correction. Both sight lines must be unobstructed.
+	const AWEVORACombatPlayground* Trial = AWEVORACombatPlayground::Find(GetWorld());
+	const UWEVORASpellWeavingComponent* Input = Pawn->FindComponentByClass<UWEVORASpellWeavingComponent>();
+	if (Trial && Trial->bLightningAssist && Input && Input->Context.Element == EWEVORASpellElement::Lightning
+		&& !OutAim.bMuzzleBlocked)
+	{
+		float BestDot = FMath::Cos(FMath::DegreesToRadians(FMath::Clamp(Trial->LightningAssistDegrees, 0.0f, 3.0f)));
+		for (TActorIterator<APawn> It(GetWorld()); It; ++It)
+		{
+			const APawn* Candidate = *It;
+			const UWEVORAHealthComponent* Health = Candidate->FindComponentByClass<UWEVORAHealthComponent>();
+			if (Candidate == Pawn || Candidate->IsHidden() || !Health || !Health->IsAlive()) { continue; }
+			const FVector Target = Candidate->GetActorLocation();
+			const FVector Offset = Target - ViewLocation;
+			if (Offset.Size() > FMath::Min(AimDistance, Trial->LightningAssistRange)) { continue; }
+			const float Dot = FVector::DotProduct(Offset.GetSafeNormal(), ViewRotation.Vector());
+			if (Dot < BestDot) { continue; }
+			FHitResult SightHit;
+			if (GetWorld()->LineTraceSingleByObjectType(SightHit, ViewLocation, Target, Objects, Query)
+				&& SightHit.GetActor() != Candidate) { continue; }
+			const FVector Direction = (Target - Origin).GetSafeNormal();
+			const FVector Start = Origin + Direction * FMath::Max(0.0f, SpawnDistance);
+			if (GetWorld()->SweepSingleByObjectType(SightHit, Origin, Start, FQuat::Identity, Objects, Sphere, Query)) { continue; }
+			if (GetWorld()->SweepSingleByObjectType(SightHit, Start, Target, FQuat::Identity, Objects, Sphere, Query)
+				&& SightHit.GetActor() != Candidate) { continue; }
+			BestDot = Dot;
+			OutAim.Target = Target;
+			OutAim.Start = Start;
+			OutAim.Direction = Direction;
+			OutAim.bBlocked = false;
+			OutAim.bTargetIsDamageable = true;
+			OutAim.bAssisted = true;
+		}
 	}
 	return true;
 }

@@ -7,6 +7,7 @@
 #include "Spell/WEVORASpellReactionComponent.h"
 #include "Spell/WEVORASpellEffectComponent.h"
 #include "Spell/WEVORAImpactEffect.h"
+#include "Playground/WEVORACombatPlayground.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/Material.h"
@@ -639,6 +640,43 @@ bool FWEVORABlueprintDesignTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Configured shape multiplier is used"), FMath::IsNearlyEqual(Launch.Parameters.Speed, 3740.0f));
 	Pilot->SpellCastComponent->ShapeProfiles.Remove(Context.Gesture);
 	TestFalse(TEXT("Blueprint rejects missing shape"), Pilot->ResolveSpellLaunch(Context, Launch));
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaygroundAssistTest, "WEVORA.Playground.LightningAssistVisibility",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FPlaygroundAssistTest::RunTest(const FString& Parameters)
+{
+	FSpellCombatWorld Scene;
+	if (!TestNotNull(TEXT("Pilot"), Scene.Pilot) || !TestNotNull(TEXT("Enemy"), Scene.Enemy)) { return false; }
+	AWEVORACombatPlayground* Trial = Scene.World->SpawnActor<AWEVORACombatPlayground>();
+	Trial->bLightningAssist = true;
+	FVector View;
+	FRotator Rotation;
+	Scene.Controller->GetPlayerViewPoint(View, Rotation);
+	// A small target center just off the camera ray but within the narrow assist cone.
+	Scene.Enemy->Collision->SetSphereRadius(5);
+	const FVector Right = FRotationMatrix(Rotation).GetUnitAxis(EAxis::Y);
+	Scene.Enemy->SetActorLocation(View + Rotation.Vector() * 2000 + Right * 40);
+	Scene.Pilot->SpellWeavingComponent->Context.Element = EWEVORASpellElement::Lightning;
+	FWEVORAAimSolution Aim;
+	Scene.Pilot->SpellCastComponent->GetAimSolution(16, Aim);
+	TestTrue(TEXT("Narrow visible Lightning correction"), Aim.bAssisted);
+	TestTrue(TEXT("Correction points at current center, not predicted intercept"), Aim.Target.Equals(Scene.Enemy->GetActorLocation(), 0.1f));
+	Trial->bLightningAssist = false;
+	Scene.Pilot->SpellCastComponent->GetAimSolution(16, Aim);
+	TestFalse(TEXT("Comparison toggle disables correction"), Aim.bAssisted);
+	Trial->bLightningAssist = true;
+	Scene.Pilot->SpellWeavingComponent->Context.Element = EWEVORASpellElement::Fire;
+	Scene.Pilot->SpellCastComponent->GetAimSolution(16, Aim);
+	TestFalse(TEXT("Fire remains manual lead shooting"), Aim.bAssisted);
+	Scene.Pilot->SpellWeavingComponent->Context.Element = EWEVORASpellElement::Lightning;
+	Scene.Enemy->SetActorLocation(View + Rotation.Vector() * 2000 + Right * 200);
+	Scene.Pilot->SpellCastComponent->GetAimSolution(16, Aim);
+	TestFalse(TEXT("Outside cone never captured"), Aim.bAssisted);
+	Scene.Enemy->SetActorLocation(View + Rotation.Vector() * 2000 + Right * 40);
+	Scene.Wall(View + Rotation.Vector() * 1000, FVector(30,300,300));
+	Scene.Pilot->SpellCastComponent->GetAimSolution(16, Aim);
+	TestFalse(TEXT("Occluder blocks assistance"), Aim.bAssisted);
 	return true;
 }
 #endif

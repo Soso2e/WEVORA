@@ -19,6 +19,7 @@ struct FWEVORAAimSolution
 	bool bTargetIsDamageable = false;
 	bool bBlocked = false;
 	bool bMuzzleBlocked = false;
+	bool bAssisted = false;
 };
 
 /** Bridges completed composition to runtime behaviour without changing the input state machine. */
@@ -62,6 +63,9 @@ public:
 	/** Single small resolution seam for future energy/modifier/situation rules. */
 	UFUNCTION(BlueprintCallable, Category="Spell")
 	bool ResolveSpell(const FWEVORASpellContext& Context, FWEVORASpellLaunch& OutLaunch) const;
+	/** Same post-Blueprint snapshot for preview and execution, including charge and trial tuning. */
+	UFUNCTION(BlueprintCallable, Category="Spell")
+	bool ResolveCastLaunch(const FWEVORASpellContext& Context, FWEVORASpellLaunch& OutLaunch) const;
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

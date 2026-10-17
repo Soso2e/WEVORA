@@ -158,7 +158,8 @@ int32 UWEVORAReticleWidget::NativePaint(const FPaintArgs& Args, const FGeometry&
 	if (bShowGestureTrail)
 	{
 		const FLinearColor Tint = TrailElement == EWEVORASpellElement::Fire
-			? FLinearColor(1.0f, 0.3f, 0.04f) : FLinearColor(0.05f, 0.8f, 1.0f);
+			? FLinearColor(1.0f, 0.3f, 0.04f) : TrailElement == EWEVORASpellElement::Lightning
+			? FLinearColor(0.7f, 0.35f, 1.0f) : FLinearColor(0.05f, 0.8f, 1.0f);
 		for (int32 Index = 1; Index < Trail.Num(); ++Index)
 		{
 			const float Alpha = FMath::Clamp(1.0f - (TrailTime - Trail[Index-1].Time)
@@ -175,7 +176,8 @@ int32 UWEVORAReticleWidget::NativePaint(const FPaintArgs& Args, const FGeometry&
 	FWEVORASpellContext Context = Pilot->SpellWeavingComponent->Context;
 	if (Context.Gesture == EWEVORAGesture::None) { Context.Gesture = EWEVORAGesture::Thrust; }
 	FWEVORASpellLaunch Launch;
-	if (!Pilot->ResolveSpellLaunch(Context, Launch)) { return Layer + 2; }
+	Context.ChargeAlpha = Charge;
+	if (!Pilot->SpellCastComponent->ResolveCastLaunch(Context, Launch)) { return Layer + 2; }
 	FWEVORAAimSolution Aim;
 	if (!Pilot->SpellCastComponent->GetAimSolution(Launch.Parameters.Radius, Aim)) { return Layer + 2; }
 	const FLinearColor Color = Aim.bBlocked ? FLinearColor(1.0f, 0.25f, 0.1f)
@@ -188,11 +190,28 @@ int32 UWEVORAReticleWidget::NativePaint(const FPaintArgs& Args, const FGeometry&
 		FSlateDrawElement::MakeLines(Elements, Layer + 4, Geometry.ToPaintGeometry(), Points,
 			ESlateDrawEffect::None, Color, true, 2.0f);
 	};
-	const float Gap = Pilot->bPrecisionAim ? 4.0f : 7.0f;
-	Line(FVector2D(-Gap-7, 0), FVector2D(-Gap, 0));
-	Line(FVector2D(Gap, 0), FVector2D(Gap+7, 0));
-	Line(FVector2D(0, -Gap-7), FVector2D(0, -Gap));
-	Line(FVector2D(0, Gap), FVector2D(0, Gap+7));
+	// Slate local coordinates inherit viewport DPI scaling; no raw-pixel offsets or camera motion.
+	const float RingRadius = Pilot->bPrecisionAim ? PrecisionRadius : TravelRadius;
+	TArray<FVector2D> Ring;
+	TArray<FVector2D> ProgressArc;
+	const float Fill = Cooldown > 0 ? 1.0f - FMath::Clamp(Cooldown /
+		FMath::Max(0.01f, Pilot->SpellWeavingComponent->AttackCooldown), 0.0f, 1.0f) : Charge;
+	for (int32 Index = 0; Index <= 64; ++Index)
+	{
+		const float Angle = Index * 2 * PI / 64 - PI * 0.5f;
+		const FVector2D Unit(FMath::Cos(Angle), FMath::Sin(Angle));
+		Ring.Add(Center + Unit * RingRadius);
+		if (Index <= FMath::FloorToInt(Fill * 64)) { ProgressArc.Add(Center + Unit * (RingRadius + 5)); }
+	}
+	FSlateDrawElement::MakeLines(Elements, Layer + 3, Geometry.ToPaintGeometry(), Ring,
+		ESlateDrawEffect::None, FLinearColor(0,0,0,0.75f), true, 4);
+	FSlateDrawElement::MakeLines(Elements, Layer + 4, Geometry.ToPaintGeometry(), Ring,
+		ESlateDrawEffect::None, Color.CopyWithNewOpacity(Cooldown > 0 ? 0.35f : 0.8f), true, 1.5f);
+	if (ProgressArc.Num() > 1)
+	{
+		FSlateDrawElement::MakeLines(Elements, Layer + 4, Geometry.ToPaintGeometry(), ProgressArc,
+			ESlateDrawEffect::None, Cooldown > 0 ? FLinearColor(0.5f,0.6f,0.7f) : Launch.Parameters.Color, true, 3);
+	}
 	Line(FVector2D(-1, 0), FVector2D(1, 0));
 	if (Aim.bBlocked)
 	{

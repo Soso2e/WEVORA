@@ -24,6 +24,16 @@ Fireは直撃25＋燃焼5/s×3秒、Windは押出900＋Lift220、Lightningは単
 既存敵BlueprintのReaction Rules／敵Projectileを新規ターゲットに転記する。
 今後の編集は専用Blueprint／マップのDetailsで行う。再生成スクリプトによる既存調整の消去を避ける。
 
+## Stage B: 偏差射撃と円形照準
+
+- 円は目安。中心点から実際のsweep弾を発射する。通常52／RMB28 Slate単位、DPIに追随。外周はCharge／CTを表示する。
+- `ResolveCastLaunch`で保存済みBPの解決後にCharge／Playground倍率を適用する。プレビューと実発射は同じスナップショットを使う。
+- Playgroundの初期半径倍率1.75、最大Chargeでさらに1.65。Fire/Windの弾速は保存値を維持。距離上限9000cmと既存寿命4秒の早い方で消える。
+- Lightningは12000cm/s。F3で発射時だけ1.5度／6000cm以内の補助を比較する。初期OFF。発射後は曲がらず、対象の移動先も予測しない。カメラと発射元双方の遮蔽を確認し、壁越し補助を拒否する。
+- F2で実弾道、衝突半径、対象速度を表示。速度継承は専用PlayerのSpellCastComponentでOpt-in、既定OFF。
+- 赤表示は射線遮断予告。発射元に障害物があれば発射禁止。途中の壁には弾が衝突する（環境への着弾検証も維持する）。
+- 調整箇所: マップ内`Combat Playground - tuning and reset`のShooting／Tuning。発射位置・寿命・速度継承は専用PlayerのSpellCastComponent。
+
 ## 検証記録
 
 着手前の`WEVORA.`: 23/23成功（`Saved/Automation/PlaygroundBefore/index.json`）。

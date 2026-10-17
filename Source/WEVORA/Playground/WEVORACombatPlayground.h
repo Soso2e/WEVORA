@@ -28,7 +28,20 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Playground|Tuning", meta=(ClampMin="0.1"))
 	float ProjectileSpeedMultiplier = 1;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Playground|Tuning", meta=(ClampMin="0.1"))
-	float ProjectileRadiusMultiplier = 1;
+	float ProjectileRadiusMultiplier = 1.75f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Playground|Shooting", meta=(ClampMin="1", Units="cm"))
+	float ProjectileRange = 9000;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Playground|Shooting", meta=(ClampMin="1"))
+	float ChargedRadiusMultiplier = 1.65f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Playground|Shooting", meta=(ClampMin="1", Units="cm/s"))
+	float LightningSpeed = 12000;
+	/** One cast-time correction only. No homing after launch. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Playground|Shooting")
+	bool bLightningAssist = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Playground|Shooting", meta=(ClampMin="0", ClampMax="3", Units="deg"))
+	float LightningAssistDegrees = 1.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Playground|Shooting", meta=(ClampMin="1", Units="cm"))
+	float LightningAssistRange = 6000;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Playground|Tuning", meta=(ClampMin="0.1"))
 	float DamageMultiplier = 1;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Playground|Tuning", meta=(ClampMin="0.1"))

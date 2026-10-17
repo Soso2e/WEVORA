@@ -12,6 +12,7 @@
 - Stage A Editorビルド成功。`WEVORA.` **26/26成功**（既存23＋新規ResetAndRespawn/MotionAndWind/FullTrialReset）。`Saved/Automation/PlaygroundStageA/index.json`。
 - マップ生成終了コード0、保存済み5対象・GameMode確認（`Saved/CombatPlayground/MapCreation.json`）。実描画・入力・Playerビルドは後続Stageで検証する。
 - 設計・再現手順: `Docs/CombatPlayground.md`。
+- Stage B: 円形レティクル、共有プレビュー／発射解決、Charge半径、距離上限、弾道表示、Lightning12000cm/s＋F3切替の限定補助（既定OFF）。Editorビルド成功、`WEVORA.` **28/28成功**。弾距離／Charge／無効値拒否、補助OFF・他属性・角度外・遮蔽を追加検証（`Saved/Automation/PlaygroundStageB/index.json`）。
 
 ## 2026-10-17 PR #7: work → main 安定化
 

@@ -7,6 +7,7 @@
 #include "Spell/WEVORASpellReactionComponent.h"
 #include "Spell/WEVORASpellWeavingComponent.h"
 #include "Spell/WEVORASpellProjectile.h"
+#include "Spell/WEVORASpellCastComponent.h"
 #include "Movement/WEVORAManaComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
@@ -16,6 +17,8 @@
 #include "GameFramework/DamageType.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/SphereComponent.h"
+#include "GameFramework/ProjectileMovementComponent.h"
+#include <limits>
 
 namespace
 {
@@ -139,6 +142,45 @@ bool FPlaygroundTrialTest::RunTest(const FString& Parameters)
 	Player->SetActorLocation(FVector(11000, 0, 100));
 	Scene.Step(0.15f);
 	TestTrue(TEXT("Boundary returns player to start"), Player->GetActorLocation().X < 100);
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaygroundBallisticsTest, "WEVORA.Playground.BallisticsAndCharge",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FPlaygroundBallisticsTest::RunTest(const FString& Parameters)
+{
+	FPlaygroundWorld Scene;
+	UClass* Class = LoadClass<AWEVORACharacter>(nullptr, TEXT("/Game/WEVORA/Playground/BP_PlaygroundPlayer.BP_PlaygroundPlayer_C"));
+	if (!TestNotNull(TEXT("Saved independent player"), Class)) { return false; }
+	AWEVORACharacter* Player = Scene.World->SpawnActor<AWEVORACharacter>(Class, FVector(0,0,500), FRotator::ZeroRotator);
+	AWEVORACombatPlayground* Trial = Scene.World->SpawnActor<AWEVORACombatPlayground>();
+	FWEVORASpellContext Context;
+	Context.Gesture = EWEVORAGesture::Thrust;
+	FWEVORASpellLaunch Normal, Charged, Lightning;
+	TestTrue(TEXT("Saved Blueprint plus trial resolves"), Player->SpellCastComponent->ResolveCastLaunch(Context, Normal));
+	Context.ChargeAlpha = 1;
+	Player->SpellCastComponent->ResolveCastLaunch(Context, Charged);
+	TestTrue(TEXT("Charge trades preparation for larger collision"), Charged.Parameters.Radius > Normal.Parameters.Radius * 1.5f);
+	TestTrue(TEXT("Charge retains existing power reward"), Charged.Spell.Power >= Normal.Spell.Power * 2);
+	Context.Element = EWEVORASpellElement::Lightning;
+	Player->SpellCastComponent->ResolveCastLaunch(Context, Lightning);
+	TestTrue(TEXT("Lightning has distinct high speed"), Lightning.Parameters.Speed > Normal.Parameters.Speed * 3);
+	Trial->ProjectileSpeedMultiplier = 0.5f;
+	Player->SpellCastComponent->ResolveCastLaunch(Context, Lightning);
+	TestEqual(TEXT("Trial speed multiplier adjusts resolved Blueprint data"), Lightning.Parameters.Speed, Trial->LightningSpeed * 0.5f);
+	Normal.Direction = FVector::ForwardVector;
+	Normal.Parameters.Speed = 1000;
+	Normal.Parameters.MaxDistance = 300;
+	Normal.Parameters.Lifetime = 4;
+	const FTransform Transform(FVector(0,4000,2000));
+	AWEVORASpellProjectile* Shot = Scene.World->SpawnActorDeferred<AWEVORASpellProjectile>(AWEVORASpellProjectile::StaticClass(), Transform);
+	Shot->InitializeSpell(Normal);
+	Shot->FinishSpawning(Transform);
+	TestTrue(TEXT("Projectile lifetime respects distance cap"), Shot->GetLifeSpan() <= 0.301f);
+	TestFalse(TEXT("Default projectile has no homing"), Shot->Movement->bIsHomingProjectile);
+	Scene.Step(0.4f);
+	TestTrue(TEXT("Distance cap expires unhit bolt"), Shot->IsActorBeingDestroyed());
+	Trial->ProjectileRadiusMultiplier = std::numeric_limits<float>::quiet_NaN();
+	TestFalse(TEXT("Invalid tuning rejected before physics"), Player->SpellCastComponent->ResolveCastLaunch(Context, Lightning));
 	return true;
 }
 #endif

@@ -111,4 +111,4 @@ void AWEVORACombatPlayground::ResetWithReason(const FString& Reason)
 
 void AWEVORACombatPlayground::ToggleDebug() { bDebugOverlay = !bDebugOverlay; }
 void AWEVORACombatPlayground::ToggleGuide() { bShowGuide = !bShowGuide; }
-void AWEVORACombatPlayground::ToggleLightningAssist() { /* Connected in Stage B. */ }
+void AWEVORACombatPlayground::ToggleLightningAssist() { bLightningAssist = !bLightningAssist; }
