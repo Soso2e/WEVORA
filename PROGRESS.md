@@ -277,3 +277,9 @@ Cookでは名前解決警告、Playerではドライバーに伴うTSR 16-bit無
 - UE 5.8 Win64 Development Editorビルド成功。共通PCHの読み込み停止を回避するため-NoPCH/-NoSharedPCHで実施し、既存の敵コードにも必要な型の明示includeを追加。エンジンヘッダーの非推奨API警告あり。
 - HeadlessテストWEVORA.Spell. 13/13成功。新規AttackEffectsテストで三属性の保存済みBlueprint解決、描画メッシュ生成、対象マテリアル取得、弾消滅後の破片の保持・飛散・寿命・衝突無効を確認。結果Saved/Automation/AttackEffects/index.json。
 - 実描画/PIEの見た目、ネットワーク配信、Playerビルドは未確認。
+
+## 2026-10-17 Localized Reactions Stage A
+- PR #8 head 6fb59f4からfeature/localized-elemental-reactionsを作成。PR #8/main/既存Assetは変更しない。
+- Zone Profile/Resolver/隣接graphを追加。FName IDとBone/Physics Body/Collider設定を分離。未知BoneはNone。
+- UE5.8 Editorビルド成功。着手前33/33、Stage A 34/34成功。設計: Docs/LocalizedElementalReactions.md。
+
