@@ -1,5 +1,10 @@
 # 攻撃・命中エフェクト
 
+Combat Playground v1では、既存基盤に手元Charge核、安定した弾核、速度に応じたTrail、短い命中Flashを追加。
+Charge核は再使用しIdleではTick停止。Niagara差替時には非表示にし、`User.ChargeAlpha`を通知する。
+Burstは既存破片の材質を維持し、追加Flashのみ対象＝属性色／環境＝灰色にする。Flash0.14秒、半径最大150cm、追加ライトなし。
+同時BurstはWorld全体32まで。専用Playgroundの操作・上限・検証範囲は`CombatPlayground.md`。
+
 Qで炎 → 風 → 雷を選択。通常攻撃・ジェスチャー攻撃のどちらも、発射した弾の
 `AttackEffect`コンポーネントが属性の見た目を生成する。
 炎は後方に細く消える火の粒、風は回転する三本の螺旋、雷は形が瞬間的に変わる三本の稲妻。

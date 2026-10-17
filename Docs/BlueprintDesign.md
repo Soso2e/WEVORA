@@ -1,5 +1,10 @@
 # Blueprintでの移動・魔法の調整
 
+Combat Playground v1は`/Game/WEVORA/Playground/BP_PlaygroundPlayer`を専用コピーとして使用する。
+既存4関数のoverrideを維持し、C++の`ResolveCastLaunch`がその出力へChargeと試験倍率を一度だけ適用する。
+Shape ProfilesのDeliveryをSweep／Field／Areaへ設定した場合は、専用PlayerのDelivery Classesに`WEVORASpellVolume`を登録する。
+既存Player／`Lvl_ThirdPerson`の保存済み値は維持する。詳細は`CombatPlayground.md`。
+
 2026-10-06: 第一段階。`/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter`に、
 よく変更するデザイン判断を4つの関数グラフとして移行。
 これらのノード変更はBlueprintのCompile / Saveだけで反映でき、C++ビルドは不要。

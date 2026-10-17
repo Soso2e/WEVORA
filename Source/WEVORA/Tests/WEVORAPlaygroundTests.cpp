@@ -16,6 +16,10 @@
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "Engine/Level.h"
+#include "GameFramework/PlayerStart.h"
+#include "GameFramework/WorldSettings.h"
+#include "GameFramework/GameModeBase.h"
 #include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/PlayerController.h"
@@ -296,6 +300,87 @@ bool FPlaygroundFeedbackTest::RunTest(const FString& Parameters)
 	}
 	Player->SpellCastComponent->ResetFeedback();
 	TestEqual(TEXT("Reset clears contacts"), Player->SpellCastComponent->HitCount, 0);
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaygroundAssetsTest, "WEVORA.Playground.SavedMapAndShapeData",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FPlaygroundAssetsTest::RunTest(const FString& Parameters)
+{
+	UWorld* Map = LoadObject<UWorld>(nullptr, TEXT("/Game/WEVORA/Maps/L_CombatPlayground.L_CombatPlayground"));
+	if (!TestNotNull(TEXT("Persisted independent map"), Map)) { return false; }
+	int32 Targets = 0, Starts = 0, Trials = 0;
+	for (AActor* Actor : Map->PersistentLevel->Actors)
+	{
+		Targets += Actor && Actor->IsA<AWEVORAPlaygroundTarget>();
+		Starts += Actor && Actor->IsA<APlayerStart>();
+		Trials += Actor && Actor->IsA<AWEVORACombatPlayground>();
+	}
+	TestEqual(TEXT("Five persisted targets"), Targets, 5);
+	TestEqual(TEXT("One persisted player start"), Starts, 1);
+	TestEqual(TEXT("One persisted trial controller"), Trials, 1);
+	TestTrue(TEXT("Map selects its dedicated mode"), Map->GetWorldSettings()->DefaultGameMode &&
+		Map->GetWorldSettings()->DefaultGameMode->GetPathName().Contains(TEXT("BP_PlaygroundGameMode")));
+	FPlaygroundWorld Scene;
+	UClass* Class = LoadClass<AWEVORACharacter>(nullptr, TEXT("/Game/WEVORA/Playground/BP_PlaygroundPlayer.BP_PlaygroundPlayer_C"));
+	if (!TestNotNull(TEXT("Saved player class"), Class)) { return false; }
+	AWEVORACharacter* Player = Scene.World->SpawnActor<AWEVORACharacter>(Class, FVector(0,0,500), FRotator::ZeroRotator);
+	const TArray<EWEVORAGesture> Gestures{EWEVORAGesture::Thrust,EWEVORAGesture::Sweep,EWEVORAGesture::Circle,EWEVORAGesture::Slam};
+	const TArray<EWEVORASpellDelivery> Deliveries{EWEVORASpellDelivery::Projectile,EWEVORASpellDelivery::Sweep,EWEVORASpellDelivery::Field,EWEVORASpellDelivery::Area};
+	for (EWEVORASpellElement Element : {EWEVORASpellElement::Fire,EWEVORASpellElement::Wind,EWEVORASpellElement::Lightning})
+	{
+		for (int32 I=0; I<Gestures.Num(); ++I)
+		{
+			FWEVORASpellContext Context;
+			Context.Element = Element;
+			Context.Gesture = Gestures[I];
+			Context.GestureMagnitude = 20;
+			FWEVORASpellLaunch Launch;
+			TestTrue(TEXT("Saved Blueprint resolves all elemental shapes"), Player->SpellCastComponent->ResolveCastLaunch(Context, Launch));
+			TestEqual(TEXT("Saved shape selects concrete delivery"), Launch.Spell.Delivery, Deliveries[I]);
+		}
+	}
+	FWEVORASpellContext Context;
+	Context.Gesture = EWEVORAGesture::Thrust;
+	FWEVORASpellLaunch Quick, Woven;
+	Player->SpellCastComponent->ResolveCastLaunch(Context, Quick);
+	Context.GestureMagnitude = 20;
+	Player->SpellCastComponent->ResolveCastLaunch(Context, Woven);
+	TestTrue(TEXT("Drawn Thrust earns speed beyond normal LMB"), Woven.Parameters.Speed > Quick.Parameters.Speed * 1.3f);
+	TestTrue(TEXT("Drawn Thrust earns power beyond normal LMB"), Woven.Spell.Power > Quick.Spell.Power);
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaygroundLeadTest, "WEVORA.Playground.ManualLeadShooting",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FPlaygroundLeadTest::RunTest(const FString& Parameters)
+{
+	FPlaygroundWorld Scene;
+	AWEVORAPlaygroundTarget* Target = Scene.Target(FVector(1000,0,2000));
+	Target->MotionAmplitude = 2000;
+	Target->MotionSpeed = 500;
+	auto FireAt = [&](FVector Direction)
+	{
+		FWEVORASpellLaunch Launch;
+		Launch.Spell.Element = EWEVORASpellElement::Lightning; // Damage only; use slow controlled test speed.
+		Launch.Parameters.Speed = 1000;
+		Launch.Parameters.Radius = 16;
+		Launch.Direction = Direction.GetSafeNormal();
+		Launch.Spell.Direction = Launch.Direction;
+		const FTransform Transform(Launch.Direction.Rotation(), FVector(0,0,2000));
+		AWEVORASpellProjectile* Shot = Scene.World->SpawnActorDeferred<AWEVORASpellProjectile>(AWEVORASpellProjectile::StaticClass(), Transform);
+		Shot->bLogEvents = false;
+		Shot->InitializeSpell(Launch);
+		Shot->FinishSpawning(Transform);
+		return Shot;
+	};
+	AWEVORASpellProjectile* Direct = FireAt(FVector(1000,0,0));
+	Scene.Step(1.3f);
+	TestEqual(TEXT("Aiming at the old position misses a moving target"), Target->HealthComponent->Health, 100.0f);
+	Direct->Destroy();
+	Target->ResetTarget();
+	// Explicit human-style lead hypothesis: flight time ~1.15s, target ~568cm sideways.
+	FireAt(FVector(1000,570,0));
+	Scene.Step(1.3f);
+	TestEqual(TEXT("Manual lead causes a real swept hit"), Target->HealthComponent->Health, 75.0f);
 	return true;
 }
 #endif

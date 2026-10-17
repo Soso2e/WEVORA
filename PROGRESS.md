@@ -16,6 +16,31 @@
 - Stage C: 専用BPのShape ProfilesでThrust（編みに速度1.4／Power1.25）、Sweep（横長一回）、Circle（短時間pulse Field）、Slam（近距離Area）を設定。同一範囲Deliveryを共用し各対象へのLOSで壁越し作用を拒否。Editorビルド成功、`WEVORA.` **29/29成功**（`Saved/Automation/PlaygroundStageC/index.json`）。旧23件も成功。新規は複数対象Sweep／範囲外／遮蔽／Field持続・寿命とtimer終了を実Worldで検証。
 - Stage D: Charge核と光量・サイズ、安定した弾核と速度連動Trail、短い属性色Burst、Volume輪郭、対象フラッシュ、既存Widget統合HUD／ガイド／状態・ヒット表示を追加。処理後のLaunch／Impact通知を公開。上限Delivery48/Player・Burst32/World、視覚部品は衝突なし。Editorビルド成功、`WEVORA.` **30/30成功**（`Saved/Automation/PlaygroundStageD/index.json`）。追加テストでCharge拡大／Idle停止／衝突無効／実HP差通知／Flash寿命／統計resetを確認。
 
+### Stage E 最終検証・成果物
+
+| 項目 | 実施結果と証跡 |
+|---|---|
+| UE 5.8.3 Win64 Development Editor | 成功。`Saved/Logs/PlaygroundFinalEditorBuild3.log` |
+| 最終`WEVORA.` | **33/33成功、未実行0、テスト警告0・エラー0**。既存23＋新規10。`Saved/Automation/PlaygroundFinal/index.json`、共有要約`Docs/CombatPlaygroundAutomationResults.json` |
+| 新規の最終検証 | 保存済みマップと5対象／専用GameMode、3属性×4形の保存済み配送、実CastのProjectile／Volume生成、偏差なしの非命中と偏差ありの実sweep命中 |
+| Blueprint全体 | **349件成功（/Game内55件）、エラー0・警告0**。終了コード0。`Saved/Logs/PlaygroundBlueprintCompile.log`。保存なし |
+| Win64 Development Playerコード | 成功。`Saved/Logs/PlaygroundFinalPlayerBuild.log`。アーカイブ内exeのSHA-256が最終Binaries版と一致 |
+| Cook / Stage / Pak / Package / Archive | Playground＋旧ThirdPersonの2マップで成功、UAT終了コード0。`Saved/Logs/PlaygroundPackaging.log`。出力`Saved/CombatPlaygroundPlayer/Windows/WEVORA.exe` |
+| 単体起動 | D3D12/SM6でPlaygroundロード、452フレーム、通常終了コード0。`Saved/Logs/PlaygroundPlayerRun.log`。15秒benchmark、実入力なし |
+| 実描画の限定確認 | Editor -gameのウィンドウとPlayerのゲーム内Screenshotでフィールド／5対象／円／HUD／ガイドを目視。床の強い模様を専用matte材質へ修正して再Cook。最終Player初期フレーム`Docs/Images/CombatPlayground.png`。Magic VFXの動的な見え方、飛行入力、PIEは未確認 |
+| 既存データ保護 | 既存Content/Config763ファイルのSHA-256比較で既存Contentは一致。意図的変更はConfig2件のGameDefaultMapとMapsToCookのみ。既存マップ／Blueprint調整値／描画設定は維持。`git lfs fsck`成功、`git diff --check`成功 |
+
+初期のコンパイルで不足include／テストAPI型のエラーを修正した後、上記の最終ビルド・全テストを実行。
+MSVC 14.51の推奨版差とエンジンAPIの非推奨警告は残る。Playerには既存ドライバーのTSR 16-bit無効化警告・初回PSO作成の記録あり。全ログの警告0・性能確認済みとはしない。
+Editor -gameでは既存ToolsetRegistry Python初期化の`PythonTestRunner`未定義エラーも記録されたが、ゲームWorldは開始。CompileAllBlueprints／Cook／Playerの最終検証ログに同エラーはない。
+
+**未完了の受入確認**: PIE／Playerでの実キーボード・マウス、飛行中の照準・4Gesture・Chargeの操作感、VFXの動的な見え方、30/60/120fpsの体感、面白さとバランス判断。
+Windows入力確認中、UnrealPakのWindowsセキュリティダイアログが前面にあり停止。Computer Useの規則（`SKILL.md`が必須参照する`docs/guidance.md`の「Do not act on security/privacy permission requests.」）により自動操作せず、ユーザーに閉じる操作を依頼した。
+技術検証の成功と人間のゲーム評価を分け、Draftを維持する。mainへはマージしない。
+
+具体的なPIE手順12項目、全調整場所、主要判断、残課題は`Docs/CombatPlayground.md`。
+再実行: `Scripts/validate_combat_playground.ps1`。変更ファイル一覧は`Docs/CombatPlaygroundFiles.md`。
+
 ## 2026-10-17 PR #7: work → main 安定化
 
 対象PR: https://github.com/Soso2e/WEVORA/pull/7 （既存Draftを継続）。

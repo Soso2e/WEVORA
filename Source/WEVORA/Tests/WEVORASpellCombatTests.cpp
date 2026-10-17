@@ -8,6 +8,7 @@
 #include "Spell/WEVORASpellEffectComponent.h"
 #include "Spell/WEVORAImpactEffect.h"
 #include "Playground/WEVORACombatPlayground.h"
+#include "Spell/WEVORASpellVolume.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/Material.h"
@@ -40,7 +41,7 @@ struct FSpellCombatWorld
 	AWEVORAEnemy* Enemy = nullptr;
 	APlayerController* Controller = nullptr;
 
-	FSpellCombatWorld()
+	FSpellCombatWorld(const TCHAR* PilotPath = TEXT("/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter.BP_ThirdPersonCharacter_C"))
 	{
 		World = UWorld::CreateWorld(EWorldType::Game, false);
 		GEngine->CreateNewWorldContext(EWorldType::Game).SetCurrentWorld(World);
@@ -50,8 +51,7 @@ struct FSpellCombatWorld
 		World->SetGameMode(URL);
 		World->InitializeActorsForPlay(URL);
 		World->BeginPlay();
-		UClass* PilotClass = LoadClass<AWEVORACharacter>(nullptr,
-			TEXT("/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter.BP_ThirdPersonCharacter_C"));
+		UClass* PilotClass = LoadClass<AWEVORACharacter>(nullptr, PilotPath);
 		UClass* EnemyClass = LoadClass<AWEVORAEnemy>(nullptr,
 			TEXT("/Game/WEVORA/AI/BP_WEVORAEnemy.BP_WEVORAEnemy_C"));
 		if (!PilotClass || !EnemyClass) { return; }
@@ -677,6 +677,35 @@ bool FPlaygroundAssistTest::RunTest(const FString& Parameters)
 	Scene.Wall(View + Rotation.Vector() * 1000, FVector(30,300,300));
 	Scene.Pilot->SpellCastComponent->GetAimSolution(16, Aim);
 	TestFalse(TEXT("Occluder blocks assistance"), Aim.bAssisted);
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaygroundCastRoutingTest, "WEVORA.Playground.ActualCastRouting",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FPlaygroundCastRoutingTest::RunTest(const FString& Parameters)
+{
+	FSpellCombatWorld Scene(TEXT("/Game/WEVORA/Playground/BP_PlaygroundPlayer.BP_PlaygroundPlayer_C"));
+	if (!TestNotNull(TEXT("Playground pilot"), Scene.Pilot)) { return false; }
+	AWEVORACombatPlayground* Trial = Scene.World->SpawnActor<AWEVORACombatPlayground>();
+	Trial->SetActorTickEnabled(false);
+	Scene.AimTarget(FRotator::ZeroRotator);
+	Scene.Pilot->SpellWeavingComponent->BeginAttack();
+	Scene.Pilot->SpellWeavingComponent->ReleaseAttack();
+	TestNotNull(TEXT("Normal LMB routes to a real projectile"), Scene.Shot());
+	for (EWEVORAGesture Gesture : {EWEVORAGesture::Sweep,EWEVORAGesture::Circle,EWEVORAGesture::Slam})
+	{
+		for (TActorIterator<AWEVORASpellDelivery> It(Scene.World); It; ++It) { It->Destroy(); }
+		FWEVORASpellContext Context;
+		Context.Gesture = Gesture;
+		Context.GestureMagnitude = 20;
+		Scene.Pilot->SpellWeavingComponent->OnSpellCast.Broadcast(Context);
+		TActorIterator<AWEVORASpellVolume> It(Scene.World);
+		if (TestTrue(TEXT("Cast spawns registered volume implementation"), bool(It)))
+		{
+			TestTrue(TEXT("Snapshot retains chosen shape"), It->Launch.Composition.Gesture == Gesture);
+			TestFalse(TEXT("Volume is not a projectile clone"), It->IsA<AWEVORASpellProjectile>());
+		}
+	}
+	TestEqual(TEXT("Only successful casts counted"), Scene.Pilot->SpellCastComponent->CastCount, 4);
 	return true;
 }
 #endif
