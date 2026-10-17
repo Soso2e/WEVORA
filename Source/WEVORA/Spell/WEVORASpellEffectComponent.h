@@ -89,4 +89,7 @@ private:
 	EWEVORASpellElement ActiveElement = EWEVORASpellElement::Fire;
 	float Radius = 16;
 	float Age = 0;
+	float TrailLength = 100;
+	float ImpactPower = 1;
+	FLinearColor ImpactColor = FLinearColor::White;
 };

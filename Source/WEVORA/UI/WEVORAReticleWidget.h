@@ -31,6 +31,9 @@ protected:
 		int32 LayerId, const FWidgetStyle& Style, bool bParentEnabled) const override;
 private:
 	int32 DrawEnemyStatus(const FGeometry& Geometry, FSlateWindowElementList& Elements, int32 Layer) const;
+	int32 DrawPlaygroundHUD(const FGeometry& Geometry, FSlateWindowElementList& Elements, int32 Layer) const;
+	float SmoothedFPS = 60;
+	int32 SeenResetCount = -1;
 	struct FTrailPoint { FVector2D Position; float Time; };
 	TArray<FTrailPoint> Trail;
 	FVector2D TrailCursor = FVector2D::ZeroVector;

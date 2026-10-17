@@ -9,16 +9,23 @@
 #include "Spell/WEVORASpellProjectile.h"
 #include "Spell/WEVORASpellCastComponent.h"
 #include "Spell/WEVORASpellVolume.h"
+#include "Spell/WEVORASpellSelectionEffectComponent.h"
+#include "Spell/WEVORAImpactEffect.h"
+#include "Spell/WEVORASpellEffectComponent.h"
 #include "Movement/WEVORAManaComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/DamageType.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/BoxComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/InstancedStaticMeshComponent.h"
+#include "Components/PointLightComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include <limits>
 
@@ -244,6 +251,51 @@ bool FPlaygroundShapeTest::RunTest(const FString& Parameters)
 	const float EndHealth = Center->HealthComponent->Health;
 	Scene.Step(0.4f);
 	TestEqual(TEXT("Expired field has no lingering timer damage"), Center->HealthComponent->Health, EndHealth);
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaygroundFeedbackTest, "WEVORA.Playground.ChargeAndImpactFeedback",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FPlaygroundFeedbackTest::RunTest(const FString& Parameters)
+{
+	FPlaygroundWorld Scene;
+	UClass* Class = LoadClass<AWEVORACharacter>(nullptr, TEXT("/Game/WEVORA/Playground/BP_PlaygroundPlayer.BP_PlaygroundPlayer_C"));
+	if (!TestNotNull(TEXT("Saved player"), Class)) { return false; }
+	AWEVORACharacter* Player = Scene.World->SpawnActor<AWEVORACharacter>(Class, FVector(0,0,500), FRotator::ZeroRotator);
+	Player->SpellWeavingComponent->bShowDebug = false;
+	Player->SpellWeavingComponent->BeginAttack();
+	UStaticMeshComponent* Core = Player->SpellSelectionEffectComponent->ChargeCore;
+	if (!TestNotNull(TEXT("One reused charge core"), Core)) { return false; }
+	Scene.Step(0.1f);
+	const float SmallSize = Core->GetRelativeScale3D().X;
+	Scene.Step(1.4f);
+	TestTrue(TEXT("Charge increases visible size"), Core->GetRelativeScale3D().X > SmallSize * 1.5f);
+	TestEqual(TEXT("Charge visual cannot determine collision"), Core->GetCollisionEnabled(), ECollisionEnabled::NoCollision);
+	Player->SpellWeavingComponent->CancelWeave();
+	TestFalse(TEXT("Idle hides charge core"), Core->IsVisible());
+	TestFalse(TEXT("Idle stops charge presentation tick"), Player->SpellSelectionEffectComponent->IsComponentTickEnabled());
+	AWEVORAPlaygroundTarget* Target = Scene.Target(FVector(1000,0,500));
+	const FTransform Transform(FVector(800,0,500));
+	AWEVORASpellProjectile* Shot = Scene.World->SpawnActorDeferred<AWEVORASpellProjectile>(AWEVORASpellProjectile::StaticClass(), Transform, Player, Player);
+	FWEVORASpellLaunch Launch;
+	Launch.Spell.Element = EWEVORASpellElement::Lightning;
+	Shot->InitializeSpell(Launch);
+	Shot->FinishSpawning(Transform);
+	FHitResult Hit(Target, Target->Collision, Target->GetActorLocation(), FVector::UpVector);
+	TestTrue(TEXT("Delivery resolves existing reaction"), Shot->DeliverToTarget(Target, Hit));
+	TestEqual(TEXT("Feedback uses actual health change"), Player->SpellCastComponent->LastImpact.DirectDamage, 25.0f);
+	TestEqual(TEXT("Reaction contact counted"), Player->SpellCastComponent->HitCount, 1);
+	Shot->AttackEffect->SpawnImpact(Hit);
+	AWEVORAImpactEffect* Burst = nullptr;
+	for (TActorIterator<AWEVORAImpactEffect> It(Scene.World); It; ++It) { Burst = *It; break; }
+	if (TestNotNull(TEXT("Bounded independent burst"), Burst))
+	{
+		TestTrue(TEXT("Flash visible at impact"), Burst->Flash->IsVisible());
+		TestEqual(TEXT("Flash cannot obstruct spells"), Burst->Flash->GetCollisionEnabled(), ECollisionEnabled::NoCollision);
+		Burst->Tick(0.2f);
+		TestFalse(TEXT("Flash disappears promptly"), Burst->Flash->IsVisible());
+	}
+	Player->SpellCastComponent->ResetFeedback();
+	TestEqual(TEXT("Reset clears contacts"), Player->SpellCastComponent->HitCount, 0);
 	return true;
 }
 #endif

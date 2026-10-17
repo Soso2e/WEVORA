@@ -8,6 +8,8 @@
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "UObject/ConstructorHelpers.h"
+#include "AI/WEVORAHealthComponent.h"
+#include "EngineUtils.h"
 
 UWEVORASpellEffectComponent::UWEVORASpellEffectComponent()
 {
@@ -38,6 +40,9 @@ void UWEVORASpellEffectComponent::StartEffect(const FWEVORASpellLaunch& Launch)
 	ActiveProfile = *Profile;
 	ActiveElement = Launch.Spell.Element;
 	Radius = FMath::Clamp(Launch.Parameters.Radius * ActiveProfile.Scale, 1.0f, 500.0f);
+	TrailLength = FMath::Clamp(Launch.Parameters.Speed * 0.07f, Radius * 5, 1200.0f);
+	ImpactPower = FMath::Clamp(Launch.Spell.Power, 0.25f, 3.0f);
+	ImpactColor = Launch.Parameters.Color;
 	if (bUseLaunchColor) { ActiveProfile.Color = Launch.Parameters.Color; }
 	UMaterialInterface* Material = ActiveProfile.Material ? ActiveProfile.Material.Get() : DefaultMaterial.Get();
 	if (Material)
@@ -70,7 +75,7 @@ void UWEVORASpellEffectComponent::StartEffect(const FWEVORASpellLaunch& Launch)
 	if (Material) { Pieces->SetMaterial(0, Material); }
 	Pieces->RegisterComponent();
 	const int32 Count = ActiveElement == EWEVORASpellElement::Fire ? 18 : 48;
-	for (int32 Index = 0; Index < Count; ++Index) { Pieces->AddInstance(FTransform::Identity); }
+	for (int32 Index = 0; Index <= Count; ++Index) { Pieces->AddInstance(FTransform::Identity); }
 	SetComponentTickEnabled(true);
 	TickComponent(0, LEVELTICK_All, nullptr);
 }
@@ -91,11 +96,17 @@ void UWEVORASpellEffectComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	for (int32 Index = 0; Index < Pieces->GetInstanceCount(); ++Index)
 	{
 		FTransform Transform;
-		if (ActiveElement == EWEVORASpellElement::Fire)
+		if (Index == Pieces->GetInstanceCount() - 1)
+		{
+			// A stable visible nucleus independent of animated trailing pieces.
+			const float Core = FMath::Max(22.0f, Radius) / 50;
+			Transform = FTransform(FQuat::Identity, FVector::ZeroVector, FVector(Core));
+		}
+		else if (ActiveElement == EWEVORASpellElement::Fire)
 		{
 			const float Phase = FMath::Frac(Age * 2.0f + Index / 18.0f);
 			const float Angle = Index * 2.4f + Age * 4;
-			const FVector Position(-Phase * Radius * 5, FMath::Cos(Angle) * Radius * Phase, FMath::Sin(Angle) * Radius * Phase + Phase * Radius);
+			const FVector Position(-Phase * TrailLength, FMath::Cos(Angle) * Radius * Phase, FMath::Sin(Angle) * Radius * Phase + Phase * Radius);
 			const float Size = Radius / 50.0f * (1 - Phase) * 0.7f;
 			Transform = FTransform(FQuat::Identity, Position, FVector(Size * 1.8f, Size, Size));
 		}
@@ -110,11 +121,11 @@ void UWEVORASpellEffectComponent::TickComponent(float DeltaTime, ELevelTick Tick
 				if (ActiveElement == EWEVORASpellElement::Wind)
 				{
 					const float Width = Radius * (0.6f + Along * 0.8f);
-					return FVector(-Along * Radius * 5, FMath::Cos(Angle) * Width, FMath::Sin(Angle) * Width);
+					return FVector(-Along * TrailLength, FMath::Cos(Angle) * Width, FMath::Sin(Angle) * Width);
 				}
 				// Discrete flicker keeps the lightning angular rather than a smooth wave.
 				FRandomStream Random(Step * 7919 + Strand * 104729 + FMath::FloorToInt(Age * 18) * 101);
-				return FVector(-Along * Radius * 6, Random.FRandRange(-Radius, Radius), Random.FRandRange(-Radius, Radius));
+				return FVector(-Along * TrailLength, Random.FRandRange(-Radius, Radius), Random.FRandRange(-Radius, Radius));
 			};
 			const FVector Start = Point(Segment), End = Point(Segment + 1);
 			const FVector Delta = End - Start;
@@ -162,9 +173,18 @@ UMaterialInterface* UWEVORASpellEffectComponent::ResolveHitMaterial(const FHitRe
 void UWEVORASpellEffectComponent::SpawnImpact(const FHitResult& Hit)
 {
 	if (!Impact.bEnabled || Impact.FragmentCount <= 0 || !GetWorld() || GetNetMode() == NM_DedicatedServer) { return; }
+	int32 Active = 0;
+	for (TActorIterator<AWEVORAImpactEffect> It(GetWorld()); It; ++It) { ++Active; }
+	if (Active >= 32) { return; }
 	UMaterialInterface* Material = ResolveHitMaterial(Hit);
 	if (!Material) { Material = Impact.FallbackMaterial; }
 	AWEVORAImpactEffect* Effect = GetWorld()->SpawnActor<AWEVORAImpactEffect>(
 		Hit.ImpactPoint + Hit.ImpactNormal * 2, FRotator::ZeroRotator);
-	if (Effect) { Effect->Initialize(Impact, Material, Hit.ImpactNormal); }
+	if (Effect)
+	{
+		Effect->Initialize(Impact, Material, Hit.ImpactNormal);
+		const bool bTarget = Hit.GetActor() && Hit.GetActor()->FindComponentByClass<UWEVORAHealthComponent>();
+		Effect->InitializeFlash(DefaultMaterial, bTarget ? ImpactColor : FLinearColor(0.5f,0.55f,0.6f),
+			(bTarget ? 70.0f : 35.0f) * FMath::Sqrt(ImpactPower));
+	}
 }

@@ -133,6 +133,23 @@ struct WEVORA_API FWEVORASpellLaunch
 	FWEVORASpellShapeProfile Volume;
 };
 
+/** Presentation result emitted AFTER reaction/health resolve. Never controls hit acceptance. */
+USTRUCT(BlueprintType)
+struct WEVORA_API FWEVORASpellImpact
+{
+	GENERATED_BODY()
+	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	TObjectPtr<AActor> Target = nullptr;
+	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	FVector Location = FVector::ZeroVector;
+	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	FWEVORASpellData Spell;
+	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	float DirectDamage = 0;
+	UPROPERTY(BlueprintReadOnly, Category="Spell")
+	bool bApplied = false;
+};
+
 USTRUCT(BlueprintType)
 struct WEVORA_API FWEVORAGestureThresholds
 {

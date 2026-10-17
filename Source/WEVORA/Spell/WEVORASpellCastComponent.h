@@ -9,6 +9,9 @@ class UWEVORASpellWeavingComponent;
 class AWEVORASpellProjectile;
 class AWEVORASpellDelivery;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FWEVORAImpactResolved, const FWEVORASpellImpact&, Impact);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FWEVORALaunchResolved, const FWEVORASpellLaunch&, Launch);
+
 /** Shared camera/muzzle solution used by both the reticle and actual casting. */
 struct FWEVORAAimSolution
 {
@@ -29,6 +32,22 @@ class WEVORA_API UWEVORASpellCastComponent : public UActorComponent
 	GENERATED_BODY()
 public:
 	UWEVORASpellCastComponent();
+	UPROPERTY(BlueprintAssignable, Category="Spell|Presentation")
+	FWEVORAImpactResolved OnImpactResolved;
+	UPROPERTY(BlueprintAssignable, Category="Spell|Presentation")
+	FWEVORALaunchResolved OnLaunchResolved;
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Spell|Presentation")
+	FWEVORASpellImpact LastImpact;
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Spell|Presentation")
+	float LastImpactTime = -100;
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Spell|Presentation")
+	int32 CastCount = 0;
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Spell|Presentation")
+	int32 HitCount = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Limits", meta=(ClampMin="1", ClampMax="128"))
+	int32 MaxActiveDeliveries = 48;
+	void RecordImpact(const FWEVORASpellImpact& Impact);
+	void ResetFeedback();
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")
 	TSubclassOf<AWEVORASpellProjectile> ProjectileClass;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell")

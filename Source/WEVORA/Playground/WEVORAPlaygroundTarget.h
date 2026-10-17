@@ -29,12 +29,22 @@ public:
 	FVector MeasuredVelocity = FVector::ZeroVector;
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Playground")
 	float LastHitTime = -100;
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Playground")
+	float LastDamage = 0;
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Playground")
+	float LastDamageTime = -100;
 	UFUNCTION(BlueprintCallable, Category="Playground")
 	void ResetTarget();
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 private:
+	UPROPERTY()
+	TObjectPtr<class UMaterialInterface> TargetMaterial;
+	UPROPERTY(Transient)
+	TObjectPtr<class UMaterialInstanceDynamic> BodyTint;
+	float PreviousHealth = 0;
+	FLinearColor HitColor = FLinearColor::White;
 	FTransform InitialTransform;
 	float MotionTime = 0;
 	FTimerHandle RespawnTimer;
@@ -42,4 +52,6 @@ private:
 	void OnDefeated();
 	UFUNCTION()
 	void OnReceivedSpell(const FWEVORASpellData& Spell);
+	UFUNCTION()
+	void OnHPChanged(float HP, float Maximum);
 };

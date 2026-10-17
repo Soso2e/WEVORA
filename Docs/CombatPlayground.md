@@ -51,6 +51,17 @@ Field／Slamの中心も手元からのtraceで壁手前へ止める。範囲が
 属性効果は既存Reaction Rules。Fireの直撃／燃焼、Windの外力とAI復帰、Lightning単発を維持する。感電・連鎖は追加しない。
 調整スクリプト`Scripts/configure_playground_spells.py`は専用Playerだけを設定し、既にDelivery Classesが設定済みなら停止する。
 
+## Stage D: 読み取れる戦闘
+
+- Charge: 右手の既存socketに衝突なし核を一つだけ生成・再使用。Chargeでサイズ／光量を補間し、Windは扁平、Lightningは速い脈動。Niagara差替時は核を非表示、`User.ChargeAlpha`を渡す。IdleではTick停止。
+- Core/Trail: 既存の属性別InstancedStaticMeshに安定した核を追加。軌跡長は速度×0.07秒（最大1200cm）。当たり判定と独立した見た目。Niagara差替は維持。
+- Burst: 既存の材質を引き継ぐ破片＋0.14秒の縮小フラッシュ。対象は属性色・大きめ、環境は灰色・小さめ。Powerでサイズ変化、最大150cm。光源を追加しない。
+- Sweepの扇とField/Areaの輪は衝突なし40インスタンスで範囲を表示。判定は別の数値とLOS。
+- HUD: 既存ReticleWidget一枚にHP／マナ／属性／Charge・CT／ガイド／リセット／補助状態を追加。F1でガイド、F2でFPS・速度・対象状態・弾道、F3で補助切替。対象頭上にHP・名前・直近ダメージと燃焼。命中markerは実Reaction結果から表示。
+- `SpellCastComponent.OnLaunchResolved`／`OnImpactResolved`は実処理後の通知。`OnSpellCast`は従来通り要求で、成功通知ではない。直接ダメージは前後のHealth差。DoTの表示は対象Health通知。
+- `CastCount`は成功した配送数、`HitCount`はReaction成立数（Fieldのpulseを含む）。命中率として扱わない。
+- 上限: プレイヤーごとDelivery48（最大128に調整可能）、BurstはWorld全体32、破片64/Burst、Field最大5秒／最小0.1秒、Gesture履歴128点。通常弾はDebug OFFでActor Tickなし。既存Desktop／RT無効設定を維持。
+
 ## 検証記録
 
 着手前の`WEVORA.`: 23/23成功（`Saved/Automation/PlaygroundBefore/index.json`）。

@@ -14,6 +14,7 @@
 - 設計・再現手順: `Docs/CombatPlayground.md`。
 - Stage B: 円形レティクル、共有プレビュー／発射解決、Charge半径、距離上限、弾道表示、Lightning12000cm/s＋F3切替の限定補助（既定OFF）。Editorビルド成功、`WEVORA.` **28/28成功**。弾距離／Charge／無効値拒否、補助OFF・他属性・角度外・遮蔽を追加検証（`Saved/Automation/PlaygroundStageB/index.json`）。
 - Stage C: 専用BPのShape ProfilesでThrust（編みに速度1.4／Power1.25）、Sweep（横長一回）、Circle（短時間pulse Field）、Slam（近距離Area）を設定。同一範囲Deliveryを共用し各対象へのLOSで壁越し作用を拒否。Editorビルド成功、`WEVORA.` **29/29成功**（`Saved/Automation/PlaygroundStageC/index.json`）。旧23件も成功。新規は複数対象Sweep／範囲外／遮蔽／Field持続・寿命とtimer終了を実Worldで検証。
+- Stage D: Charge核と光量・サイズ、安定した弾核と速度連動Trail、短い属性色Burst、Volume輪郭、対象フラッシュ、既存Widget統合HUD／ガイド／状態・ヒット表示を追加。処理後のLaunch／Impact通知を公開。上限Delivery48/Player・Burst32/World、視覚部品は衝突なし。Editorビルド成功、`WEVORA.` **30/30成功**（`Saved/Automation/PlaygroundStageD/index.json`）。追加テストでCharge拡大／Idle停止／衝突無効／実HP差通知／Flash寿命／統計resetを確認。
 
 ## 2026-10-17 PR #7: work → main 安定化
 

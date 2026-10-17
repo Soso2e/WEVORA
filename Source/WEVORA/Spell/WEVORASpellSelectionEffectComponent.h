@@ -9,6 +9,10 @@ class UNiagaraSystem;
 class UNiagaraComponent;
 class UPointLightComponent;
 class UWEVORASpellWeavingComponent;
+class UStaticMeshComponent;
+class UStaticMesh;
+class UMaterialInterface;
+class UMaterialInstanceDynamic;
 
 USTRUCT(BlueprintType)
 struct WEVORA_API FWEVORASpellSelectionEffect
@@ -31,6 +35,9 @@ class WEVORA_API UWEVORASpellSelectionEffectComponent : public USceneComponent
 	GENERATED_BODY()
 public:
 	UWEVORASpellSelectionEffectComponent();
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* Function) override;
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Spell|Effects")
+	TObjectPtr<UStaticMeshComponent> ChargeCore;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Effects")
 	TMap<EWEVORASpellElement, FWEVORASpellSelectionEffect> ElementEffects;
 	/** Right-hand bone or socket on the character mesh. */
@@ -61,6 +68,12 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 private:
+	UPROPERTY()
+	TObjectPtr<UStaticMesh> CoreMesh;
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> CoreMaterial;
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> CoreDynamic;
 	UPROPERTY(Transient)
 	TObjectPtr<UWEVORASpellWeavingComponent> Weaving;
 	UPROPERTY(Transient)

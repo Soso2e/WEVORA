@@ -75,6 +75,12 @@ void UWEVORASpellCastComponent::HandleCast(const FWEVORASpellContext& Context)
 {
 	APawn* Pawn = Cast<APawn>(GetOwner());
 	if (!Pawn || !Pawn->HasAuthority() || !Pawn->GetController()) { return; }
+	int32 ActiveDeliveries = 0;
+	for (TActorIterator<AWEVORASpellDelivery> It(GetWorld()); It; ++It)
+	{
+		if (It->GetOwner() == Pawn && !It->IsActorBeingDestroyed()) { ++ActiveDeliveries; }
+	}
+	if (ActiveDeliveries >= FMath::Clamp(MaxActiveDeliveries, 1, 128)) { return; }
 	const UWEVORAHealthComponent* Health = Pawn->FindComponentByClass<UWEVORAHealthComponent>();
 	if (Health && !Health->IsAlive()) { return; }
 	FWEVORASpellLaunch Launch;
@@ -123,7 +129,9 @@ void UWEVORASpellCastComponent::HandleCast(const FWEVORASpellContext& Context)
 		FMath::Clamp(HorizontalVelocityInheritance, 0.0f, 1.0f);
 	Shot->bLogEvents = bLogEvents;
 	Shot->InitializeSpell(Launch);
+	++CastCount;
 	UGameplayStatics::FinishSpawningActor(Shot, Transform);
+	OnLaunchResolved.Broadcast(Launch);
 	if (Pilot)
 	{
 		Pilot->ApplySpellLaunchFeedback(Launch.Direction, Pilot->GetSpellRecoilSpeed(Context));
@@ -164,6 +172,12 @@ bool UWEVORASpellCastComponent::ResolveCastLaunch(const FWEVORASpellContext& Con
 			Launch.Spell.Power *= Shape->WovenPowerMultiplier;
 		}
 	}
+	if (Launch.Spell.Delivery != EWEVORASpellDelivery::Projectile &&
+		(!FMath::IsFinite(Launch.Volume.Range) || Launch.Volume.Range < 1 ||
+		!FMath::IsFinite(Launch.Volume.Width) || Launch.Volume.Width < 1 ||
+		!FMath::IsFinite(Launch.Volume.Height) || Launch.Volume.Height < 1 ||
+		!FMath::IsFinite(Launch.Volume.Duration) || Launch.Volume.Duration <= 0 ||
+		!FMath::IsFinite(Launch.Volume.PulseInterval) || Launch.Volume.PulseInterval <= 0)) { return false; }
 	// Blueprint rules may supply custom data; reject invalid physics inputs before a sweep or spawn.
 	if (!FMath::IsFinite(Launch.Spell.Power) || Launch.Spell.Power <= 0.0f ||
 		!FMath::IsFinite(Launch.Parameters.Speed) || Launch.Parameters.Speed < 1.0f ||
@@ -174,6 +188,21 @@ bool UWEVORASpellCastComponent::ResolveCastLaunch(const FWEVORASpellContext& Con
 		return false;
 	}
 	return true;
+}
+
+void UWEVORASpellCastComponent::RecordImpact(const FWEVORASpellImpact& Impact)
+{
+	LastImpact = Impact;
+	LastImpactTime = GetWorld()->GetTimeSeconds();
+	if (Impact.bApplied) { ++HitCount; }
+	OnImpactResolved.Broadcast(Impact);
+}
+
+void UWEVORASpellCastComponent::ResetFeedback()
+{
+	LastImpact = FWEVORASpellImpact();
+	LastImpactTime = -100;
+	CastCount = HitCount = 0;
 }
 
 bool UWEVORASpellCastComponent::GetAimSolution(float Radius, FWEVORAAimSolution& OutAim) const

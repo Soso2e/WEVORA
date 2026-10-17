@@ -436,6 +436,7 @@ void AWEVORACharacter::ResetForPlayground(const FTransform& Start)
 	if (!HasAuthority()) { return; }
 	ResetFlightInput();
 	SpellWeavingComponent->ResetCombat();
+	SpellCastComponent->ResetFeedback();
 	HealthComponent->ResetHealth();
 	ManaComponent->RestoreMana(ManaComponent->MaxMana);
 	GetCharacterMovement()->StopMovementImmediately();

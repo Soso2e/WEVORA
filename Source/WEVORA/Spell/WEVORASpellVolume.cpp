@@ -6,6 +6,10 @@
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
 #include "GameFramework/Pawn.h"
+#include "Components/InstancedStaticMeshComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Engine/StaticMesh.h"
+#include "UObject/ConstructorHelpers.h"
 #include "TimerManager.h"
 #include "DrawDebugHelpers.h"
 
@@ -15,6 +19,16 @@ AWEVORASpellVolume::AWEVORASpellVolume()
 	SetRootComponent(CreateDefaultSubobject<USceneComponent>(TEXT("Origin")));
 	AttackEffect = CreateDefaultSubobject<UWEVORASpellEffectComponent>(TEXT("AttackEffect"));
 	AttackEffect->SetupAttachment(RootComponent);
+	Outline = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("VolumeOutline"));
+	Outline->SetupAttachment(RootComponent);
+	Outline->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Outline->SetGenerateOverlapEvents(false);
+	Outline->SetCastShadow(false);
+	Outline->SetCanEverAffectNavigation(false);
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Glow(TEXT("/Game/WEVORA/Effects/M_AttackEffect.M_AttackEffect"));
+	Outline->SetStaticMesh(Cube.Object);
+	OutlineMaterial = Glow.Object;
 }
 
 void AWEVORASpellVolume::InitializeSpell_Implementation(const FWEVORASpellLaunch& InLaunch)
@@ -33,6 +47,29 @@ void AWEVORASpellVolume::BeginPlay()
 	FWEVORASpellLaunch Cosmetic = Launch;
 	Cosmetic.Parameters.Radius = FMath::Clamp(Launch.Volume.Width * 0.18f, 25.0f, 100.0f);
 	AttackEffect->StartEffect(Cosmetic);
+	if (GetNetMode() != NM_DedicatedServer)
+	{
+		UMaterialInstanceDynamic* Material = OutlineMaterial ? UMaterialInstanceDynamic::Create(OutlineMaterial, this) : nullptr;
+		if (Material)
+		{
+			Material->SetVectorParameterValue(TEXT("SpellColor"), Launch.Parameters.Color * 0.65f);
+			Outline->SetMaterial(0, Material);
+		}
+		const bool bSweep = Launch.Spell.Delivery == EWEVORASpellDelivery::Sweep;
+		// World-horizontal ring for area denial; a forward fan for the directional sweep.
+		if (!bSweep) { Outline->SetWorldRotation(FRotator::ZeroRotator); }
+		for (int32 Index = 0; Index < 40; ++Index)
+		{
+			auto Point = [&](int32 I)
+			{
+				const float Angle = bSweep ? -PI * 0.5f + I * PI / 40 : I * 2 * PI / 40;
+				return FVector(FMath::Cos(Angle) * (bSweep ? Launch.Volume.Range : Launch.Volume.Width),
+					FMath::Sin(Angle) * Launch.Volume.Width, 0);
+			};
+			const FVector A = Point(Index), B = Point(Index + 1), Delta = B - A;
+			Outline->AddInstance(FTransform(Delta.Rotation(), (A+B)*0.5f, FVector(Delta.Size()/100, 0.045f, 0.045f)));
+		}
+	}
 	SetLifeSpan(Launch.Spell.Delivery == EWEVORASpellDelivery::Field ? Launch.Volume.Duration : 0.25f);
 	if (!HasAuthority()) { return; }
 	Pulse();
@@ -65,6 +102,8 @@ void AWEVORASpellVolume::Pulse()
 		const FVector Relative = GetActorTransform().InverseTransformPosition(Position);
 		if (bSweep && (Relative.X < 0 || Relative.X > Launch.Volume.Range ||
 			FMath::Abs(Relative.Y) > Launch.Volume.Width || FMath::Abs(Relative.Z) > Launch.Volume.Height)) { continue; }
+		if (bSweep && FMath::Square(Relative.X / Launch.Volume.Range) +
+			FMath::Square(Relative.Y / Launch.Volume.Width) > 1) { continue; }
 		if (!bSweep && FVector::DistSquared(Position, GetActorLocation()) > FMath::Square(Radius)) { continue; }
 		FHitResult Sight;
 		// Covers both world geometry and intervening pawns. Volumes never damage through walls.
