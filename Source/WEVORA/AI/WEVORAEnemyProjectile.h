@@ -13,6 +13,8 @@ class WEVORA_API AWEVORAEnemyProjectile : public AActor
 {
 	GENERATED_BODY()
 public:
+	/** Stable cleanup scope even when the firing enemy has already been destroyed. */
+	UPROPERTY(Transient) TObjectPtr<AActor> CombatScope;
 	AWEVORAEnemyProjectile();
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
 	TObjectPtr<USphereComponent> Collision;

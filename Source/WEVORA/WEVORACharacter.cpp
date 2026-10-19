@@ -126,7 +126,7 @@ void AWEVORACharacter::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	UpdateCameraFeel(DeltaSeconds);
-	if (bShowFlightFeedback && IsLocallyControlled() && GEngine)
+	if (bShowFlightFeedback && !bUseSoloHUD && IsLocallyControlled() && GEngine)
 	{
 		const UEnum* StateEnum = StaticEnum<EWEVORAFlightState>();
 		GEngine->AddOnScreenDebugMessage(static_cast<uint64>(GetUniqueID()), 0.1f,
@@ -448,6 +448,20 @@ void AWEVORACharacter::ResetForPlayground(const FTransform& Start)
 	if (Controller) { Controller->SetControlRotation(Start.Rotator()); }
 }
 
+void AWEVORACharacter::SuspendRunControls(bool bSuspend)
+{
+	bRunControlsSuspended = bSuspend;
+	ResetFlightInput();
+	GetCharacterMovement()->StopMovementImmediately();
+	GetCharacterMovement()->ClearAccumulatedForces();
+	GetCharacterMovement()->SetMovementMode(bSuspend ? MOVE_None : MOVE_Falling);
+	if (APlayerController* PC = Cast<APlayerController>(Controller))
+	{
+		PC->FlushPressedKeys();
+		if (bSuspend) { DisableInput(PC); } else { EnableInput(PC); }
+	}
+}
+
 void AWEVORACharacter::ConfigurePlaygroundMovement(float SpeedMultiplier)
 {
 	const AWEVORACharacter* Defaults = GetClass()->GetDefaultObject<AWEVORACharacter>();
@@ -512,7 +526,7 @@ void AWEVORACharacter::UpdateSpellMovement(float DeltaSeconds)
 void AWEVORACharacter::UpdateFlightBeforeMovement(float DeltaSeconds)
 {
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
-	if (!Movement || DeltaSeconds <= 0.0f)
+	if (!Movement || DeltaSeconds <= 0.0f || bRunControlsSuspended)
 	{
 		return;
 	}
@@ -526,12 +540,13 @@ void AWEVORACharacter::UpdateFlightBeforeMovement(float DeltaSeconds)
 	Movement->MaxAcceleration = FMath::Max(0.0f, bGrounded ? GlideAcceleration : AirSteeringAcceleration) * SpellMovementMultiplier;
 	ManaComponent->UpdateRecovery(DeltaSeconds, bGrounded);
 	AscendHeldTime = bAscending ? AscendHeldTime + DeltaSeconds : 0.0f;
-	AirSpeedLimit = FMath::FInterpConstantTo(AirSpeedLimit, FMath::Max(0.0f, CruiseSpeed),
+	const float RunCruiseSpeed = CruiseSpeed * FMath::Clamp(RunSpeedMultiplier, 0.1f, 4.0f);
+	AirSpeedLimit = FMath::FInterpConstantTo(AirSpeedLimit, FMath::Max(0.0f, RunCruiseSpeed),
 		DeltaSeconds, FMath::Max(0.0f, BurstSpeedDecay));
 	// Scale cruise steering but keep the existing burst reserve for evasive movement.
-	Movement->MaxWalkSpeed = bGrounded ? FMath::Max(0.0f, GroundSpeed) * SpellMovementMultiplier :
-		FMath::Max(0.0f, CruiseSpeed) * SpellMovementMultiplier + FMath::Max(0.0f, AirSpeedLimit - CruiseSpeed);
-	Movement->MaxFlySpeed = FMath::Max(0.0f, CruiseSpeed) * SpellMovementMultiplier;
+	Movement->MaxWalkSpeed = bGrounded ? FMath::Max(0.0f, GroundSpeed) * RunSpeedMultiplier * SpellMovementMultiplier :
+		FMath::Max(0.0f, RunCruiseSpeed) * SpellMovementMultiplier + FMath::Max(0.0f, AirSpeedLimit - RunCruiseSpeed);
+	Movement->MaxFlySpeed = FMath::Max(0.0f, RunCruiseSpeed) * SpellMovementMultiplier;
 
 	const bool bSteering = PlanarInputMagnitude > KINDA_SMALL_NUMBER;
 	if (bSteering && !bBraking)
@@ -545,7 +560,7 @@ void AWEVORACharacter::UpdateFlightBeforeMovement(float DeltaSeconds)
 		FlightState = EWEVORAFlightState::Grounded;
 		Movement->GravityScale = FallGravityScale;
 		bJumpLaunchPhase = false;
-		AirSpeedLimit = FMath::Max(0.0f, CruiseSpeed);
+		AirSpeedLimit = FMath::Max(0.0f, RunCruiseSpeed);
 		return;
 	}
 

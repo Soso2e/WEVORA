@@ -13,6 +13,8 @@ class WEVORA_API UWEVORASpellWeavingComponent : public UActorComponent
 {
 	GENERATED_BODY()
 public:
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Solo") bool bCombatInputEnabled = true;
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Solo") bool bRestrictElements = false;
 	UWEVORASpellWeavingComponent();
 	/** Presentation receives the same finite, positive-up input as recognition. */
 	FWEVORAOnGestureSample OnGestureSample;

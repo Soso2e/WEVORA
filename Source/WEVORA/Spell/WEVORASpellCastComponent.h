@@ -31,6 +31,7 @@ class WEVORA_API UWEVORASpellCastComponent : public UActorComponent
 {
 	GENERATED_BODY()
 public:
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Solo") float RunRadiusMultiplier = 1;
 	UWEVORASpellCastComponent();
 	UPROPERTY(BlueprintAssignable, Category="Spell|Presentation")
 	FWEVORAImpactResolved OnImpactResolved;

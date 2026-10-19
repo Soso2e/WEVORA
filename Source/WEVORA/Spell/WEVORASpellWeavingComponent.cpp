@@ -27,6 +27,7 @@ void UWEVORASpellWeavingComponent::SetState(EWEVORAWeavingState NewState)
 
 void UWEVORASpellWeavingComponent::BeginWeave()
 {
+	if (!bCombatInputEnabled) { return; }
 	if (State != EWEVORAWeavingState::Idle || GetCooldownRemaining() > 0.0f) { return; }
 	ClearGesture();
 	SetState(EWEVORAWeavingState::Weaving);
@@ -47,6 +48,7 @@ float UWEVORASpellWeavingComponent::GetChargeAlpha() const
 
 void UWEVORASpellWeavingComponent::BeginAttack()
 {
+	if (!bCombatInputEnabled) { return; }
 	if (State != EWEVORAWeavingState::Idle || GetCooldownRemaining() > 0.0f) { return; }
 	AttackStartTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
 	bAttackHeld = true;
@@ -66,6 +68,7 @@ void UWEVORASpellWeavingComponent::ReleaseAttack()
 
 void UWEVORASpellWeavingComponent::BeginQuickShape()
 {
+	if (!bCombatInputEnabled) { return; }
 	if (State != EWEVORAWeavingState::Idle || GetCooldownRemaining() > 0.0f) { return; }
 	bQuickShapeHeld = true;
 	BeginWeave();
@@ -81,6 +84,7 @@ void UWEVORASpellWeavingComponent::EndQuickShape()
 
 void UWEVORASpellWeavingComponent::CycleElement()
 {
+	if (!bCombatInputEnabled) { return; }
 	if (AvailableElements.IsEmpty()) { return; }
 	const int32 CurrentIndex = AvailableElements.IndexOfByKey(Context.Element);
 	Context.Element = AvailableElements[(CurrentIndex + 1) % AvailableElements.Num()];
@@ -118,6 +122,7 @@ void UWEVORASpellWeavingComponent::EndShape()
 
 void UWEVORASpellWeavingComponent::ReleaseWeave()
 {
+	if (!bCombatInputEnabled || (bRestrictElements && !AvailableElements.Contains(Context.Element))) { CancelWeave(); return; }
 	if (State != EWEVORAWeavingState::ReadyToCast || Context.Gesture == EWEVORAGesture::None || GetCooldownRemaining() > 0.0f)
 	{
 		CancelWeave();

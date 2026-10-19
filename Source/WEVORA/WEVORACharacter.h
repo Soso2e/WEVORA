@@ -50,6 +50,11 @@ class AWEVORACharacter : public ACharacter
 	UCameraComponent* FollowCamera;
 
 public:
+	/** Solo runtime layer; authored movement values remain intact. */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Solo") float RunSpeedMultiplier = 1;
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Solo") bool bUseSoloHUD = false;
+	void SuspendRunControls(bool bSuspend);
+	bool AreRunControlsSuspended() const { return bRunControlsSuspended; }
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Aim")
 	FVector ShoulderOffset = FVector(0.0f, 85.0f, 55.0f);
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Aim")
@@ -272,6 +277,7 @@ protected:
 	float AscendHeldTime = 0.0f;
 	float AirSpeedLimit = 1200.0f;
 	bool bJumpLaunchPhase = false;
+	bool bRunControlsSuspended = false;
 
 public:
 

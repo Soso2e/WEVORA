@@ -12,6 +12,7 @@ class WEVORA_API UWEVORAManaComponent : public UActorComponent
 {
 	GENERATED_BODY()
 public:
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Solo") float RunRecoveryMultiplier = 1;
 	UWEVORAManaComponent();
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Mana", meta=(ClampMin="1"))
 	float MaxMana = 100.0f;

@@ -33,6 +33,9 @@ public:
 	bool IsAlive() const { return Health > 0.0f; }
 	UFUNCTION(BlueprintCallable, Category="Health")
 	void ResetHealth();
+	/** Positive healing cannot resurrect; restoration is an explicit ResetHealth operation. */
+	UFUNCTION(BlueprintCallable, Category="Health") void Heal(float Amount);
+	UFUNCTION(BlueprintCallable, Category="Health") void SetMaxHealth(float Value);
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

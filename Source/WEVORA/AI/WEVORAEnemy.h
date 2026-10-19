@@ -53,12 +53,18 @@ public:
 	float AttackInterval = 1.5f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Attack", meta=(ClampMin="0", Units="s"))
 	float WindupTime = 0.4f;
+	/** Opt-in solo boss tell/recovery. Zero recovery preserves existing enemy behavior. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Attack") bool bLockWindupAim = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Attack", meta=(ClampMin="0")) float RecoveryTime = 0;
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Attack") FVector TelegraphTarget = FVector::ZeroVector;
+	UFUNCTION(BlueprintPure, Category="Attack") float GetRecoveryRemaining() const;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Attack", meta=(ClampMin="0"))
 	float AttackDamage = 10.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Attack", meta=(ClampMin="1"))
 	float ProjectileSpeed = 1600.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Attack")
 	TSubclassOf<AWEVORAEnemyProjectile> ProjectileClass;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Attack", meta=(ClampMin="1", ClampMax="16")) int32 MaxActiveProjectiles = 8;
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="AI")
 	TObjectPtr<APawn> Target;
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category="Attack")
@@ -72,6 +78,7 @@ private:
 	void UpdateBurningVisual();
 	float NextAttackTime = 0.0f;
 	float FireTime = 0.0f;
+	float RecoveryUntilTime = 0.0f;
 	bool IsValidTarget(const APawn* Candidate) const;
 	bool CanSeeTarget() const;
 	void SetWindupVisual(bool bActive);

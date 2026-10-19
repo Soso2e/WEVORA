@@ -51,6 +51,6 @@ void UWEVORAManaComponent::UpdateRecovery(float DeltaSeconds, bool bGrounded)
 	if (bGrounded)
 	{
 		const float RecoveryTime = FMath::Max(0.0f, TimeSinceConsumption - FMath::Max(PreviousTime, RecoveryDelay));
-		RestoreMana(FMath::Max(0.0f, GroundRecoveryPerSecond) * RecoveryTime);
+		RestoreMana(FMath::Max(0.0f, GroundRecoveryPerSecond) * RecoveryTime * FMath::Clamp(RunRecoveryMultiplier, 0.0f, 4.0f));
 	}
 }
