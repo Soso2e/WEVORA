@@ -312,6 +312,10 @@ public:
 	/** Handles move inputs from either controls or UI interfaces */
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoMove(float Right, float Forward);
+	/** Clear held inputs, resource/cast recovery and movement for repeatable local trials. */
+	UFUNCTION(BlueprintCallable, Category="Playground")
+	void ResetForPlayground(const FTransform& Start);
+	void ConfigurePlaygroundMovement(float SpeedMultiplier);
 
 	/** Handles look inputs from either controls or UI interfaces */
 	UFUNCTION(BlueprintCallable, Category="Input")

@@ -21,6 +21,8 @@ public:
 	AWEVORAEnemy();
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void BeginPlay() override;
+	UFUNCTION(BlueprintCallable, Category="AI")
+	void ResetCombatState();
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
 	TObjectPtr<UPointLightComponent> BurningLight;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")

@@ -28,6 +28,8 @@ public:
 	FWEVORADeath OnDeath;
 	UFUNCTION(BlueprintPure, Category="Health")
 	bool IsAlive() const { return Health > 0.0f; }
+	UFUNCTION(BlueprintCallable, Category="Health")
+	void ResetHealth();
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

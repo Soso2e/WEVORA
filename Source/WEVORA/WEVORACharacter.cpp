@@ -5,6 +5,7 @@
 #include "Engine/World.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/Controller.h"
@@ -428,6 +429,31 @@ void AWEVORACharacter::ResetFlightInput()
 	StopJumping();
 	ConsumeMovementInputVector();
 	GetCharacterMovement()->GravityScale = FallGravityScale;
+}
+
+void AWEVORACharacter::ResetForPlayground(const FTransform& Start)
+{
+	if (!HasAuthority()) { return; }
+	ResetFlightInput();
+	SpellWeavingComponent->ResetCombat();
+	SpellCastComponent->ResetFeedback();
+	HealthComponent->ResetHealth();
+	ManaComponent->RestoreMana(ManaComponent->MaxMana);
+	GetCharacterMovement()->StopMovementImmediately();
+	GetCharacterMovement()->ClearAccumulatedForces();
+	SetActorTransform(Start, false, nullptr, ETeleportType::TeleportPhysics);
+	GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+	AirSpeedLimit = CruiseSpeed;
+	FlightState = EWEVORAFlightState::Falling;
+	if (Controller) { Controller->SetControlRotation(Start.Rotator()); }
+}
+
+void AWEVORACharacter::ConfigurePlaygroundMovement(float SpeedMultiplier)
+{
+	const AWEVORACharacter* Defaults = GetClass()->GetDefaultObject<AWEVORACharacter>();
+	CruiseSpeed = Defaults->CruiseSpeed * FMath::Clamp(SpeedMultiplier, 0.1f, 4.0f);
+	GroundSpeed = Defaults->GroundSpeed * FMath::Clamp(SpeedMultiplier, 0.1f, 4.0f);
+	bShowFlightFeedback = false;
 }
 
 void AWEVORACharacter::CancelSpellForEvasion()

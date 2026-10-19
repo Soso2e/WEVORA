@@ -8,10 +8,19 @@
 #include "WEVORA.h"
 #include "NiagaraComponent.h"
 #include "TimerManager.h"
+#include "Components/StaticMeshComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Engine/StaticMesh.h"
+#include "UObject/ConstructorHelpers.h"
 
 UWEVORASpellSelectionEffectComponent::UWEVORASpellSelectionEffectComponent()
 {
-	PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bStartWithTickEnabled = false;
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Glow(TEXT("/Game/WEVORA/Effects/M_AttackEffect.M_AttackEffect"));
+	CoreMesh = Sphere.Object;
+	CoreMaterial = Glow.Object;
 	FWEVORASpellSelectionEffect Fire;
 	Fire.Color = FLinearColor(1.0f, 0.15f, 0.02f);
 	ElementEffects.Add(EWEVORASpellElement::Fire, Fire);
@@ -42,6 +51,20 @@ void UWEVORASpellSelectionEffectComponent::BeginPlay()
 	}
 	Weaving = GetOwner()->FindComponentByClass<UWEVORASpellWeavingComponent>();
 	if (!Weaving) { return; }
+	ChargeCore = NewObject<UStaticMeshComponent>(GetOwner(), TEXT("ChargeCore"));
+	ChargeCore->SetupAttachment(this);
+	ChargeCore->SetStaticMesh(CoreMesh);
+	ChargeCore->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	ChargeCore->SetGenerateOverlapEvents(false);
+	ChargeCore->SetCastShadow(false);
+	ChargeCore->SetCanEverAffectNavigation(false);
+	ChargeCore->SetVisibility(false);
+	ChargeCore->RegisterComponent();
+	if (CoreMaterial)
+	{
+		CoreDynamic = UMaterialInstanceDynamic::Create(CoreMaterial, this);
+		ChargeCore->SetMaterial(0, CoreDynamic);
+	}
 	Niagara = NewObject<UNiagaraComponent>(GetOwner());
 	Niagara->SetAutoActivate(false);
 	Niagara->SetupAttachment(this);
@@ -134,6 +157,9 @@ void UWEVORASpellSelectionEffectComponent::ApplyEffect(EWEVORAWeavingState State
 		return;
 	}
 	bPreviewActive = true;
+	SetComponentTickEnabled(true);
+	if (CoreDynamic) { CoreDynamic->SetVectorParameterValue(TEXT("SpellColor"), Profile->Color); }
+	if (ChargeCore) { ChargeCore->SetVisibility(!Profile->System); }
 	PreviewLight->SetLightColor(Profile->Color);
 	PreviewLight->SetIntensity(FMath::Max(0.0f, PreviewLightIntensity));
 	PreviewLight->SetAttenuationRadius(FMath::Max(0.0f, PreviewLightRadius));
@@ -154,8 +180,31 @@ void UWEVORASpellSelectionEffectComponent::ApplyEffect(EWEVORAWeavingState State
 void UWEVORASpellSelectionEffectComponent::StopPreview()
 {
 	bPreviewActive = false;
+	SetComponentTickEnabled(false);
+	if (ChargeCore) { ChargeCore->SetVisibility(false); }
 	if (Niagara) { Niagara->DeactivateImmediate(); }
 	if (PreviewLight) { PreviewLight->SetVisibility(false); }
+}
+
+void UWEVORASpellSelectionEffectComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* Function)
+{
+	Super::TickComponent(DeltaTime, TickType, Function);
+	if (!bPreviewActive || !Weaving) { return; }
+	const float Charge = Weaving->GetChargeAlpha();
+	const float Time = GetWorld()->GetTimeSeconds();
+	const float Pulse = 1 + FMath::Sin(Time * (LastElement == EWEVORASpellElement::Lightning ? 28 : 9)) * 0.07f;
+	if (ChargeCore)
+	{
+		const float Scale = FMath::Lerp(0.075f, 0.28f, Charge) * Pulse;
+		ChargeCore->SetRelativeScale3D(LastElement == EWEVORASpellElement::Wind ? FVector(Scale, Scale, Scale * 0.65f) : FVector(Scale));
+		ChargeCore->SetRelativeRotation(FRotator(0, Time * 150, Time * 90));
+	}
+	if (PreviewLight)
+	{
+		PreviewLight->SetIntensity(FMath::Max(0.0f, PreviewLightIntensity) * FMath::Lerp(0.25f, 1.0f, Charge) * Pulse);
+		PreviewLight->SetAttenuationRadius(PreviewLightRadius * FMath::Lerp(0.55f, 1.15f, Charge));
+	}
+	if (Niagara && Niagara->GetAsset()) { Niagara->SetVariableFloat(TEXT("User.ChargeAlpha"), Charge); }
 }
 
 void UWEVORASpellSelectionEffectComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -168,6 +217,8 @@ void UWEVORASpellSelectionEffectComponent::EndPlay(const EEndPlayReason::Type En
 	if (PreviewLight) { PreviewLight->DestroyComponent(); PreviewLight = nullptr; }
 	if (BodyNiagara) { BodyNiagara->DestroyComponent(); BodyNiagara = nullptr; }
 	if (BodyLight) { BodyLight->DestroyComponent(); BodyLight = nullptr; }
+	if (ChargeCore) { ChargeCore->DestroyComponent(); ChargeCore = nullptr; }
+	CoreDynamic = nullptr;
 	Weaving = nullptr;
 	Super::EndPlay(EndPlayReason);
 }

@@ -71,6 +71,8 @@ public:
 	bool HasState(EWEVORASpellTargetState State) const;
 	UFUNCTION(BlueprintPure, Category="Spell|State")
 	bool IsDisplaced() const { return !ExternalVelocity.IsNearlyZero(); }
+	UFUNCTION(BlueprintCallable, Category="Spell|State")
+	void ResetReactions();
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

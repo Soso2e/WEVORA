@@ -184,9 +184,18 @@ void UWEVORASpellReactionComponent::TickComponent(float DeltaTime, ELevelTick Ti
 
 void UWEVORASpellReactionComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	ResetReactions();
+	Super::EndPlay(EndPlayReason);
+}
+
+void UWEVORASpellReactionComponent::ResetReactions()
+{
+	const bool bWasBurning = HasState(EWEVORASpellTargetState::Burning);
 	BurningRemaining = BurningAccumulator = 0.0f;
+	BurningDamagePerSecond = 0;
 	ExternalVelocity = FVector::ZeroVector;
 	BurningInstigator.Reset();
 	BurningSource.Reset();
-	Super::EndPlay(EndPlayReason);
+	SetComponentTickEnabled(false);
+	if (bWasBurning) { OnStateChanged.Broadcast(EWEVORASpellTargetState::Burning, false); }
 }

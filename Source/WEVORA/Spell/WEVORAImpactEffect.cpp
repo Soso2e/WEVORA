@@ -2,6 +2,8 @@
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Components/StaticMeshComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 AWEVORAImpactEffect::AWEVORAImpactEffect()
 {
@@ -14,6 +16,27 @@ AWEVORAImpactEffect::AWEVORAImpactEffect()
 	Fragments->SetCanEverAffectNavigation(false);
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Mesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
 	if (Mesh.Succeeded()) { Fragments->SetStaticMesh(Mesh.Object); }
+	Flash = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HitFlash"));
+	Flash->SetupAttachment(Fragments);
+	Flash->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Flash->SetGenerateOverlapEvents(false);
+	Flash->SetCastShadow(false);
+	Flash->SetVisibility(false);
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+	if (Sphere.Succeeded()) { Flash->SetStaticMesh(Sphere.Object); }
+}
+
+void AWEVORAImpactEffect::InitializeFlash(UMaterialInterface* Material, FLinearColor Color, float Radius)
+{
+	FlashRadius = FMath::Clamp(Radius, 10.0f, 150.0f);
+	if (Material)
+	{
+		UMaterialInstanceDynamic* Dynamic = UMaterialInstanceDynamic::Create(Material, this);
+		Dynamic->SetVectorParameterValue(TEXT("SpellColor"), Color);
+		Flash->SetMaterial(0, Dynamic);
+	}
+	Flash->SetRelativeScale3D(FVector(FlashRadius / 50));
+	Flash->SetVisibility(true);
 }
 
 void AWEVORAImpactEffect::Initialize(const FWEVORAImpactEffectSettings& Settings, UMaterialInterface* Material, FVector Normal)
@@ -44,6 +67,8 @@ void AWEVORAImpactEffect::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	Age += DeltaSeconds;
+	Flash->SetVisibility(Age < 0.14f);
+	if (Age < 0.14f) { Flash->SetRelativeScale3D(FVector(FlashRadius / 50 * (1 - Age / 0.14f))); }
 	const float Fade = 1.0f - FMath::Clamp((Age / Config.Lifetime - 0.65f) / 0.35f, 0.0f, 1.0f);
 	for (int32 Index = 0; Index < Velocities.Num(); ++Index)
 	{
