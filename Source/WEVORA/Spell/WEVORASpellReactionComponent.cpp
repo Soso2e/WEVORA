@@ -1,4 +1,5 @@
 #include "Spell/WEVORASpellReactionComponent.h"
+#include "Spell/WEVORALocalizedStatusComponent.h"
 #include "AI/WEVORAHealthComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "GameFramework/Character.h"
@@ -38,7 +39,26 @@ UWEVORASpellReactionComponent::UWEVORASpellReactionComponent()
 
 bool UWEVORASpellReactionComponent::HasState(EWEVORASpellTargetState State) const
 {
-	return State == EWEVORASpellTargetState::Burning && BurningRemaining > 0.0f;
+	if (State != EWEVORASpellTargetState::Burning) { return false; }
+	const UWEVORALocalizedStatusComponent* Local = GetOwner()->FindComponentByClass<UWEVORALocalizedStatusComponent>();
+	return Local && Local->IsLocalized() ? Local->HasStatus(NAME_None, TEXT("Burning")) : BurningRemaining > 0.0f;
+}
+
+void UWEVORASpellReactionComponent::BeginPlay()
+{
+	Super::BeginPlay();
+	if (UWEVORAHealthComponent* Health = GetOwner()->FindComponentByClass<UWEVORAHealthComponent>())
+	{
+		Health->OnDeath.AddUniqueDynamic(this, &ThisClass::ResetReactions);
+		Health->OnReset.AddUniqueDynamic(this, &ThisClass::ResetReactions);
+	}
+}
+
+void UWEVORASpellReactionComponent::ClearLegacyBurning()
+{
+	BurningRemaining = BurningAccumulator = BurningDamagePerSecond = 0;
+	BurningInstigator.Reset(); BurningSource.Reset();
+	SetComponentTickEnabled(IsDisplaced());
 }
 
 bool UWEVORASpellReactionComponent::ApplyDisplacement(const FVector& Velocity, const FHitResult& Hit)
@@ -70,6 +90,14 @@ bool UWEVORASpellReactionComponent::ApplyDisplacement(const FVector& Velocity, c
 bool UWEVORASpellReactionComponent::ReceiveSpell(const FWEVORASpellData& Spell, const FHitResult& Hit,
 	AController* Instigator, AActor* Causer)
 {
+	return ReceiveSpellBatch(Spell, {Hit}, Instigator, Causer);
+}
+
+bool UWEVORASpellReactionComponent::ReceiveSpellBatch(const FWEVORASpellData& Spell, const TArray<FHitResult>& Hits,
+	AController* Instigator, AActor* Causer)
+{
+	if (Hits.IsEmpty()) { return false; }
+	const FHitResult& Hit = Hits[0];
 	AActor* Owner = GetOwner();
 	if (!IsValid(Owner) || !Owner->HasAuthority() || Spell.Power <= 0.0f || !FMath::IsFinite(Spell.Power)
 		|| Spell.Direction.ContainsNaN()) { return false; }
@@ -77,6 +105,9 @@ bool UWEVORASpellReactionComponent::ReceiveSpell(const FWEVORASpellData& Spell, 
 	if (Pawn && Pawn->IsPlayerControlled() && !bAffectPlayers) { return false; }
 	const UWEVORAHealthComponent* Health = Owner->FindComponentByClass<UWEVORAHealthComponent>();
 	if (Health && !Health->IsAlive()) { return false; }
+	UWEVORALocalizedStatusComponent* Local = Owner->FindComponentByClass<UWEVORALocalizedStatusComponent>();
+	if (Local && !Local->IsLocalized()) { Local = nullptr; }
+	if (Local) { ClearLegacyBurning(); }
 	// Resolve against an immutable pre-hit state. Rule order cannot enable another rule on this same hit.
 	TArray<FWEVORASpellReactionEffect> Effects;
 	for (const FWEVORASpellReactionRule& Rule : ReactionRules)
@@ -88,6 +119,10 @@ bool UWEVORASpellReactionComponent::ReceiveSpell(const FWEVORASpellData& Spell, 
 		}
 	}
 	bool bApplied = false;
+	if (Local)
+	{
+		for (const FHitResult& ZoneHit : Hits) { bApplied |= Local->QueueReaction(Spell, ZoneHit); }
+	}
 	FVector Displacement = FVector::ZeroVector;
 	for (const FWEVORASpellReactionEffect& Effect : Effects)
 	{
@@ -101,6 +136,24 @@ bool UWEVORASpellReactionComponent::ReceiveSpell(const FWEVORASpellData& Spell, 
 				Hit, Instigator, Causer, UDamageType::StaticClass()) > 0.0f;
 			break;
 		case EWEVORASpellReaction::Burning:
+			if (Local)
+			{
+				TSet<FName> AppliedZones;
+				TArray<FWEVORALocalStatus> Applications;
+				for (const FHitResult& ZoneHit : Hits)
+				{
+					const FName Zone = Local->GetProfile()->ResolveHit(ZoneHit, Owner);
+					if (Zone.IsNone() || AppliedZones.Contains(Zone)) { continue; }
+					AppliedZones.Add(Zone);
+					FWEVORALocalStatus Status; Status.Zone = Zone; Status.Element = Spell.Element;
+					Status.Intensity = Spell.Power; Status.Accumulation = Spell.Power;
+					Status.DamagePerSecond = Magnitude; Status.Remaining = Effect.Duration;
+					Status.Instigator = Instigator; Status.Source = Causer && Causer->GetOwner() ? Causer->GetOwner() : Causer;
+					Applications.Add(Status);
+				}
+				bApplied |= Local->ApplyStatusBatch(Applications);
+				break;
+			}
 			if (Effect.Duration > 0.0f)
 			{
 				const bool bWasBurning = HasState(EWEVORASpellTargetState::Burning);
@@ -140,6 +193,10 @@ void UWEVORASpellReactionComponent::TickComponent(float DeltaTime, ELevelTick Ti
 	AActor* Owner = GetOwner();
 	if (!Owner->HasAuthority()) { SetComponentTickEnabled(false); return; }
 	const UWEVORAHealthComponent* Health = Owner->FindComponentByClass<UWEVORAHealthComponent>();
+	if (const UWEVORALocalizedStatusComponent* Local = Owner->FindComponentByClass<UWEVORALocalizedStatusComponent>())
+	{
+		if (Local->IsLocalized()) { ClearLegacyBurning(); }
+	}
 	if (Health && !Health->IsAlive())
 	{
 		const bool bWasBurning = HasState(EWEVORASpellTargetState::Burning);
@@ -184,6 +241,11 @@ void UWEVORASpellReactionComponent::TickComponent(float DeltaTime, ELevelTick Ti
 
 void UWEVORASpellReactionComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (UWEVORAHealthComponent* Health = GetOwner()->FindComponentByClass<UWEVORAHealthComponent>())
+	{
+		Health->OnDeath.RemoveDynamic(this, &ThisClass::ResetReactions);
+		Health->OnReset.RemoveDynamic(this, &ThisClass::ResetReactions);
+	}
 	ResetReactions();
 	Super::EndPlay(EndPlayReason);
 }
@@ -191,6 +253,10 @@ void UWEVORASpellReactionComponent::EndPlay(const EEndPlayReason::Type EndPlayRe
 void UWEVORASpellReactionComponent::ResetReactions()
 {
 	const bool bWasBurning = HasState(EWEVORASpellTargetState::Burning);
+	if (UWEVORALocalizedStatusComponent* Local = GetOwner()->FindComponentByClass<UWEVORALocalizedStatusComponent>())
+	{
+		Local->ResetStatuses();
+	}
 	BurningRemaining = BurningAccumulator = 0.0f;
 	BurningDamagePerSecond = 0;
 	ExternalVelocity = FVector::ZeroVector;

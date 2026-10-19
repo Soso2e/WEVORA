@@ -2,9 +2,13 @@
 
 > **優先順位の改定（2026-10-17）**：最初の販売可能な体験は**ソロ主体のアリーナ型ローグライト**とし、Combat Playgroundの実プレイ検証→ウェーブとラン内3系統強化→試練ボスと属性永続解放を先行する。確定方針は [Docs/SoloArenaDesign.md](Docs/SoloArenaDesign.md) を参照。以下の**64ステップは以前のロードマップ**を履歴として保持したもので、新優先順位や完了状況を反映したリストではない。マルチ開発は後続で別途判断する。
 
-> 2026-10-16更新。Unreal Engine 5.8で開発、Windows向けSteam有料販売を目指す。**この表は計画であり、実装済みを意味しない。** 完了はプレイテスト／ビルド結果で判定。
+> 2026-10-17更新。Unreal Engine 5.8で開発、Windows向けSteam有料販売を目指す。**この表は計画であり、実装済みを意味しない。** 完了はプレイテスト／ビルド結果で判定。
 
 ## 制作順の原則
+
+2026-10-17 Localized Elemental Reactionsブランチ: No.23〜33の汎用Zone Profile/Resolver、局所状態、Fire→Wind伝播、最大DPSによる総HP連携、仮Collider、F2デバッグ、自動テストを実装。
+No.24は仮ColliderとPhysicsAsset Hit正規化を検証し、正式Skeletal Meshでの着弾は未確認。No.34は任意Actorへ追加できるコンポーネント/APIの接続口までで、地形反応は制作しない。
+PR #8をbaseとするStacked PRであり、PR #8/mainは変更・マージしない。数値と部位区分は仮説のまま。検証結果・調整値・人間のPIE手順は`Docs/LocalizedElementalReactions.md`。
 
 2026-10-17 Combat Playground v1ブランチ: 07〜22の検証用実装（独立平地、移動的、reset、円形照準、偏差弾道、4Shape Delivery、Lightning比較、HUD／VFX）を追加。
 自動検証とPlayerビルド結果はPROGRESS、調整場所・PIE手順は`Docs/CombatPlayground.md`。操作感やリターンの妥当性をプレイ評価してから計画上の完了を判断する。
@@ -122,4 +126,3 @@
 [CONCEPT.md](CONCEPT.md) / [GAME_DESIGN.md](GAME_DESIGN.md) / [PROGRESS.md](PROGRESS.md) を参照。
 
 進捗管理（Notion）：[WEVORA｜開発ダッシュボード](https://app.notion.com/p/3fbd7670ba178160b183ed58af5a5cd4)。このリンクは参照であり、自動双方向同期ではない。
-

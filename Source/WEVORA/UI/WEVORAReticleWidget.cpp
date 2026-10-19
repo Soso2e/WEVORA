@@ -6,6 +6,7 @@
 #include "AI/WEVORAEnemy.h"
 #include "AI/WEVORAHealthComponent.h"
 #include "Spell/WEVORASpellReactionComponent.h"
+#include "Spell/WEVORALocalizedStatusComponent.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
@@ -138,7 +139,7 @@ int32 UWEVORAReticleWidget::DrawPlaygroundHUD(const FGeometry& Geometry,
 	if (Trial->bDebugOverlay)
 	{
 		const FVector2D Origin(FMath::Max(360.0, Size.X - 354), 22);
-		Box(Origin, FVector2D(332, 230), FLinearColor(0.01f,0.02f,0.035f,0.85f));
+		Box(Origin, FVector2D(332, 510), FLinearColor(0.01f,0.02f,0.035f,0.85f));
 		Text(Origin + FVector2D(12,8), FString::Printf(TEXT("%.0f FPS  |  speed %.0f cm/s"), SmoothedFPS, Pilot->GetVelocity().Size()),14);
 		Text(Origin + FVector2D(12,32), FString::Printf(TEXT("Casts %d  |  reaction contacts %d"), Cast->CastCount, Cast->HitCount),12);
 		Text(Origin + FVector2D(12,54), Trial->LastResetReason, 12);
@@ -150,6 +151,38 @@ int32 UWEVORAReticleWidget::DrawPlaygroundHUD(const FGeometry& Geometry,
 				*Target->TargetName.Left(12), Target->HealthComponent->Health, Target->MeasuredVelocity.Size(),
 				!Target->HealthComponent->IsAlive() ? TEXT("RESPAWN") : Target->SpellReactionComponent->IsDisplaced()
 				? TEXT("PUSH") : Target->SpellReactionComponent->BurningRemaining > 0 ? TEXT("BURN") : TEXT("")),11);
+		}
+		const AWEVORAPlaygroundTarget* Focus = ::Cast<AWEVORAPlaygroundTarget>(Cast->LastImpact.Target.Get());
+		if (!Focus || !Focus->FindComponentByClass<UWEVORALocalizedStatusComponent>())
+		{
+			for (const AWEVORAPlaygroundTarget* Target : Trial->Targets)
+			{
+				if (IsValid(Target) && Target->FindComponentByClass<UWEVORALocalizedStatusComponent>()) { Focus = Target; break; }
+			}
+		}
+		const UWEVORALocalizedStatusComponent* Local = Focus ? Focus->FindComponentByClass<UWEVORALocalizedStatusComponent>() : nullptr;
+		if (Local && Local->GetProfile())
+		{
+			Text(Origin + FVector2D(12,248), FString::Printf(TEXT("LOCAL last=%s  HP %.1f  delta -%.2f"),
+				*Local->LastHitZone.ToString(), Focus->HealthComponent->Health, Focus->LastDamage), 10, FLinearColor(1,0.65f,0.2f));
+			int32 Row = 0;
+			for (const FWEVORAZoneDefinition& Zone : Local->GetProfile()->Zones)
+			{
+				FString StatusText = Zone.ID.ToString() + TEXT(": --");
+				for (const FWEVORALocalStatus& State : Local->States)
+				{
+					if (State.Zone != Zone.ID) { continue; }
+					StatusText = FString::Printf(TEXT("%s %s %.2fs I%.2f A%.2f"), *Zone.ID.ToString(),
+						*State.Type.ToString(), State.Remaining, State.Intensity, State.Accumulation);
+					break;
+				}
+				Text(Origin + FVector2D(12,270 + Row++ * 18), StatusText, 10);
+			}
+			Text(Origin + FVector2D(12,420), TEXT("Propagation (last frame batch):"), 10);
+			for (int32 I = 0; I < FMath::Min(3, Local->LastPropagationPaths.Num()); ++I)
+			{
+				Text(Origin + FVector2D(12,440 + I*18), Local->LastPropagationPaths[I], 10, FLinearColor(1,0.6f,0.2f));
+			}
 		}
 	}
 	const float SinceImpact = GetWorld()->GetTimeSeconds() - Cast->LastImpactTime;

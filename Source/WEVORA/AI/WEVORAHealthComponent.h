@@ -26,6 +26,9 @@ public:
 	FWEVORAHealthChanged OnHealthChanged;
 	UPROPERTY(BlueprintAssignable, Category="Health")
 	FWEVORADeath OnDeath;
+	/** Fired before HP restoration so old statuses cannot leak into a new life. */
+	UPROPERTY(BlueprintAssignable, Category="Health")
+	FWEVORADeath OnReset;
 	UFUNCTION(BlueprintPure, Category="Health")
 	bool IsAlive() const { return Health > 0.0f; }
 	UFUNCTION(BlueprintCallable, Category="Health")
