@@ -1,6 +1,6 @@
 # Solo Arena Vertical Slice — 実装指示 / Technical Plan
 
-> Status: implementation-ready plan (NOT a claim of working code). Created 2026-10-19.
+> Status: Phase A–D implementation and validation recorded in [SoloArena.md](SoloArena.md) and [../PROGRESS.md](../PROGRESS.md). This file preserves the original implementation plan, created 2026-10-19. Human play acceptance remains outstanding.
 > Working branch: `feature/solo-arena-vertical-slice`, based on `feature/localized-elemental-reactions` (draft PR #9, stacked on draft PR #8).
 > Product direction: `main:Docs/SoloArenaDesign.md` (2026-10-17). That design document exists on main, not necessarily on this stacked branch. **Integrate the latest main documentation and preserve its newer decisions before implementing.**
 > Do not merge #8/#9 or overwrite existing Content/Config without explicit need; do not change the original Combat Playground into a run mode.

@@ -1,8 +1,44 @@
 # WEVORA Progress
 
-最終更新: 2026-10-17
+最終更新: 2026-10-19
 
-現在フェーズ: Combat Playground v1（feature/combat-playground、main=3ac0aceから開発）
+現在フェーズ: Solo Arena Vertical Slice（Issue #10、`feature/solo-arena-vertical-slice`、Draft PR #9の上に積む）
+
+## 2026-10-19 Solo Arena Vertical Slice — Issue #10
+
+設計正本は `Docs/SoloArenaDesign.md`。mainのソロ文書3コミットをcherry-pickし、ROADMAPの競合は新優先方針と既存の検証記録を両立して解消。
+PR #8 / #9 / mainは変更・マージしていない。実装手順・操作・調整値・人間の受け入れ確認は `Docs/SoloArena.md`。
+
+- Phase A (`4f6e624`): 専用GameMode / HUD / Run Director、段階的出現・同時上限、実HPによる撃破、敗北優先の状態遷移、timeout・場外・放棄・再挑戦。Editorビルド、**47/47成功**（既存45件保持）。
+- Phase B (`2e633e5`): Element / Mobility / SurvivalのカードUIと1/2/3・マウス選択、半径・飛行速度・地上マナ回復・HPのラン内強化、stack上限、終了・再試行時の解除。選択中は未完了入力を破棄し、操作を安全に再開。ソロ初期Fire/Windと発射時の属性アクセス検査。Editorビルド、**49/49成功**。
+- Phase C (`8a380a2`): 専用 `L_SoloArenaPrototype` と `DA_SoloArenaPrototype`、既存AI/Health/Projectile/Reactionを共用する8Zone敵・ボス。固定照準の赤い予兆と硬直、勝敗UI、試練IDごとの属性解放、version 1 SaveGame、保存失敗の表示・再保存・未知schemaの上書き防止。Editorビルド、**55/55成功**。
+- Phase D (`3f475e1`): 保存マップ・実カードボタン・実Projectileの右手Fire→腕Wind→胴体・既存局所反応、ラン終了後の所有弾/状態/保留反応破棄、無効な調整値とtimeoutを追加検証。試練解放後の実Lightning発射も確認。**58/58成功**。
+- 仮説は5ウェーブ・4回の3択・ボス1体。各属性の基本反応は強化取得で制限しない。Waterは実装・使用可能表示ともに追加していない。Lightningは試練初回クリア後、次のランから使用可能。
+- ソロは明示的に専用マップを起動する。既定起動マップはCombat Playgroundのまま。既存の5+1対象、F1/F2/F3/Rと既存45件の回帰を維持。
+
+| 検証 | 結果・証跡 |
+|---|---|
+| 環境 | Unreal Engine **5.8.3** (CL 58210709)、Win64 Development、MSVC 14.51.36260 |
+| 実装前baseline | 45/45成功。`Saved/Automation/SoloBaseline/index.json` |
+| 各段階Editor / 全WEVORAテスト | A47 / B49 / C55 / D58成功。`Saved/Automation/SoloA`〜`SoloD/index.json` |
+| 最終自動テスト | **58/58、未実行0、テスト警告0・エラー0**。既存45件をテスト名で照合。`Docs/SoloArenaAutomationResults.json` |
+| 別プロセス保存 | 専用GUIDスロットへ保存→Editor終了→別Editor起動→Lightningと試練IDを再読込成功。Write / Read各1件成功、通常のプレイヤー保存は変更しない |
+| Blueprint | **349件、/Game 55件、エラー0・警告0・ロード失敗0**。保存なし。`Saved/Logs/SoloDBlueprints.log` |
+| Win64 Game / 3マップPackage | Gameビルド、Solo / Playground / ThirdPersonのCook・Stage・Pak・Package・Archive成功、UAT終了0。`Saved/Logs/SoloDPlayerBuild.log` / `SoloDPackage.log` |
+| Player描画smoke | Solo / Playgroundを別々にD3D12 / SM6で起動し、各452フレームで正常終了0。実入力なし。配布exeのSHA-256が最終Binaries版と一致 |
+| 既存データ保護 | 最終Cook後も実装開始時Content/Config **772ファイル全てのSHA-256不変**。新規Map / DataAssetの2件もコミットのLFS SHA-256と一致。合計774件 |
+
+ビルド・配布・新規資産のSHA-256と警告の機械可読記録: `Docs/SoloArenaValidation.json`。
+配布exe SHA-256: `1409e03c176b7a4893f3a7537cec423e3c260bdfce508aede6560048b5adf10c`。
+ローカル配布先: `Saved/SoloArenaPlayer/Windows/WEVORA.exe`（引数に `/Game/WEVORA/Maps/L_SoloArenaPrototype` を指定）。
+コンパイルはEngineヘッダのC4996警告行がEditor96 / Game49、推奨MSVCとの差の警告あり。テスト・Blueprint警告は0。
+Playerには既存のNVIDIA TSR 16-bit VALU無効化警告が各1件。Git LFS fsck、diff --check、PowerShell構文検査成功。
+
+テストの成功は**人間のPIE/配布Playerの実操作・通しプレイや面白さの確認ではない**。
+狙いやすさ、飛行と編みの操作感、カードの読みやすさ、ボス予兆・反撃・難度・ラン時間・再起動後の手操作確認は未実施。
+ゲームパッド専用カードUI、複数試練の選択メニュー、水など追加属性、正式モデル/mGear/Niagara/音、オンラインは未実装。
+再現: `Scripts/validate_solo_arena.ps1`（`-Phase A/B/C/D`、`-SkipPlayer`対応）。通常のプレイヤーSaveGameを自動テストで初期化しない。
+
 
 ## 2026-10-17 Combat Playground v1
 

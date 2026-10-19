@@ -1,0 +1,65 @@
+{
+  "date": "2026-10-19",
+  "testedSourceCommit": "3f475e1e107f3a8e1c05b285686e579d03315197",
+  "engine": "5.8.3",
+  "editorBuild": "Success",
+  "gameBuild": "Success",
+  "blueprints": {
+    "game": 55,
+    "errors": 0,
+    "warnings": 0,
+    "loadFailures": 0,
+    "total": 349
+  },
+  "package": {
+    "pak": "Success",
+    "uatExitCode": 0,
+    "stage": "Success",
+    "matchesFinalBuild": true,
+    "playerSHA256": "1409e03c176b7a4893f3a7537cec423e3c260bdfce508aede6560048b5adf10c",
+    "archive": "Success",
+    "maps": [
+      "/Game/WEVORA/Maps/L_SoloArenaPrototype",
+      "/Game/WEVORA/Maps/L_CombatPlayground",
+      "/Game/ThirdPerson/Lvl_ThirdPerson"
+    ],
+    "package": "Success",
+    "cook": "Success"
+  },
+  "playerSmoke": [
+    {
+      "frames": 452,
+      "humanInputVerified": false,
+      "map": "L_SoloArenaPrototype",
+      "exitCode": 0,
+      "rhi": "D3D12 / SM6"
+    },
+    {
+      "frames": 452,
+      "humanInputVerified": false,
+      "map": "L_CombatPlayground",
+      "exitCode": 0,
+      "rhi": "D3D12 / SM6"
+    }
+  ],
+  "protectedOriginalFiles": 772,
+  "protectedOriginalFilesChanged": 0,
+  "newAssets": [
+    {
+      "sha256": "2852ef13a8891b1525d1f53796ceb77d250b673375a5aaa7058b82a0b26879fb",
+      "path": "Content/WEVORA/Maps/L_SoloArenaPrototype.umap"
+    },
+    {
+      "sha256": "6a2896e367ef959149657da92ddf0f708faced95e22fe1c07a4f4363caa3cd3d",
+      "path": "Content/WEVORA/Solo/DA_SoloArenaPrototype.uasset"
+    }
+  ],
+  "warnings": {
+    "gameCompilerC4996Lines": 49,
+    "editorCompilerC4996Lines": 96,
+    "player": "NVIDIA TSR 16-bit VALU disabled for driver older than 610.00",
+    "automationTestWarnings": 0,
+    "toolchain": "MSVC 14.51.36260 is newer than preferred 14.50.35717"
+  },
+  "humanPlayAcceptance": "Not performed in PIE or packaged Player; balance, input feel and manual restart/unlock acceptance remain outstanding"
+}
