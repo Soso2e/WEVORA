@@ -45,13 +45,14 @@ void UWEVORASoloWidget::Show(AWEVORARunDirector* Director)
 		: (Run->State == EWEVORARunState::Victory ? TEXT("TRIAL CLEARED\n") : TEXT("RUN ENDED\n")) + Run->ResultReason));
 	for (int32 Index=0; Index<3; ++Index)
 	{
-		const bool bVisible = bChoice ? Run->Choices.IsValidIndex(Index) : Index == 0;
+		const bool bRetrySave = !bChoice && Index == 1 && Run->Progression->bSavePending;
+		const bool bVisible = bChoice ? Run->Choices.IsValidIndex(Index) : Index == 0 || bRetrySave;
 		Buttons[Index]->SetVisibility(bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 		if (bVisible)
 		{
 			Labels[Index]->SetText(FText::FromString(bChoice
 				? FString::Printf(TEXT("[%d]  %s\n%s\n"), Index+1,*Run->Choices[Index].Title.ToString(),*Run->Choices[Index].Description.ToString())
-				: TEXT("Retry  [R / Enter]\nStart a new run with temporary upgrades cleared.\n")));
+				: bRetrySave ? TEXT("Save again [2]\n") : TEXT("Retry  [R / Enter]\nStart a new run with temporary upgrades cleared.\n")));
 		}
 	}
 	SetVisibility(ESlateVisibility::Visible);
@@ -63,12 +64,17 @@ void UWEVORASoloWidget::ChooseOne()
 	if (Run->State == EWEVORARunState::UpgradeChoice) { Run->SelectUpgrade(0); }
 	else { Run->Retry(); }
 }
-void UWEVORASoloWidget::ChooseTwo() { if (Run) { Run->SelectUpgrade(1); } }
+void UWEVORASoloWidget::ChooseTwo()
+{
+	if (!Run) { return; }
+	if (Run->State == EWEVORARunState::UpgradeChoice) { Run->SelectUpgrade(1); } else { Run->RetrySave(); }
+}
 void UWEVORASoloWidget::ChooseThree() { if (Run) { Run->SelectUpgrade(2); } }
 
 FReply UWEVORASoloWidget::NativeOnKeyDown(const FGeometry& Geometry, const FKeyEvent& Event)
 {
 	const FKey Key = Event.GetKey();
+	if (Key == EKeys::R && Run) { Run->Retry(); return FReply::Handled(); }
 	if (Run && Run->State == EWEVORARunState::UpgradeChoice)
 	{
 		if (Key == EKeys::One || Key == EKeys::NumPadOne) { ChooseOne(); return FReply::Handled(); }
@@ -76,5 +82,6 @@ FReply UWEVORASoloWidget::NativeOnKeyDown(const FGeometry& Geometry, const FKeyE
 		if (Key == EKeys::Three || Key == EKeys::NumPadThree) { ChooseThree(); return FReply::Handled(); }
 	}
 	else if (Key == EKeys::R || Key == EKeys::Enter) { ChooseOne(); return FReply::Handled(); }
+	else if (Key == EKeys::Two || Key == EKeys::NumPadTwo) { ChooseTwo(); return FReply::Handled(); }
 	return Super::NativeOnKeyDown(Geometry,Event);
 }

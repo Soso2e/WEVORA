@@ -3,6 +3,7 @@
 #include "Engine/DataAsset.h"
 #include "AI/WEVORAEnemy.h"
 #include "Solo/WEVORARunUpgrades.h"
+#include "Solo/WEVORASoloProgression.h"
 #include "WEVORAArenaConfig.generated.h"
 
 UENUM(BlueprintType)
@@ -20,6 +21,8 @@ struct FWEVORAArenaWave
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta=(ClampMin="0.1")) float SpeedMultiplier = 1;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta=(ClampMin="0")) float DamageMultiplier = 1;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bBoss = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta=(ClampMin="0.1")) float BossWindup = 1.4f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta=(ClampMin="0.1")) float BossRecovery = 2.2f;
 };
 
 /** Prototype pacing, not a fixed product wave count or duration. */
@@ -29,6 +32,7 @@ class WEVORA_API UWEVORAArenaConfig : public UDataAsset
 	GENERATED_BODY()
 public:
 	UWEVORAArenaConfig();
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) FWEVORAArenaTrial Trial;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FWEVORARunUpgrade> Upgrades;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FWEVORAArenaWave> Waves;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FVector> SpawnOffsets;

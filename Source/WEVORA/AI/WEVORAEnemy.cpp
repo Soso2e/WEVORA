@@ -13,6 +13,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "UObject/ConstructorHelpers.h"
+#include "EngineUtils.h"
 
 AWEVORAEnemy::AWEVORAEnemy()
 {
@@ -147,6 +148,7 @@ void AWEVORAEnemy::Tick(float DeltaSeconds)
 		return;
 	}
 	Movement->MaxSpeed = FMath::Max(0.0f, MoveSpeed);
+	if (GetRecoveryRemaining() > 0) { Movement->StopMovementImmediately(); ConsumeMovementInputVector(); return; }
 	if (!IsValidTarget(Target) || !CanSeeTarget())
 	{
 		Target = nullptr;
@@ -183,6 +185,7 @@ void AWEVORAEnemy::Tick(float DeltaSeconds)
 	{
 		SetWindupVisual(true);
 		FireTime = Now + FMath::Max(0.0f, WindupTime);
+		TelegraphTarget = Target->GetActorLocation();
 		OnAttackStarted();
 	}
 }
@@ -191,18 +194,27 @@ void AWEVORAEnemy::Fire()
 {
 	SetWindupVisual(false);
 	NextAttackTime = GetWorld()->GetTimeSeconds() + FMath::Max(0.1f, AttackInterval);
+	RecoveryUntilTime = GetWorld()->GetTimeSeconds() + FMath::Max(0.0f, RecoveryTime);
 	if (!IsValidTarget(Target) || !CanSeeTarget() || !ProjectileClass) { return; }
+	int32 ActiveShots = 0;
+	for (TActorIterator<AWEVORAEnemyProjectile> It(GetWorld()); It; ++It)
+	{
+		if (It->GetOwner() == this) { ++ActiveShots; }
+	}
+	if (ActiveShots >= FMath::Clamp(MaxActiveProjectiles,1,16)) { return; }
 	// Start just outside the body. Check this short segment too, so a muzzle inside a wall cannot fire through it.
 	const FVector Start = Muzzle->GetComponentLocation();
 	FHitResult Hit;
 	FCollisionQueryParams Query(SCENE_QUERY_STAT(EnemyMuzzle), false, this);
 	if (GetWorld()->LineTraceSingleByChannel(Hit, GetActorLocation(), Start, ECC_Visibility, Query)) { return; }
-	const FTransform ShotTransform((Target->GetActorLocation() - Start).Rotation(), Start);
+	const FVector AimTarget = bLockWindupAim ? TelegraphTarget : Target->GetActorLocation();
+	const FTransform ShotTransform((AimTarget - Start).Rotation(), Start);
 	AWEVORAEnemyProjectile* Shot = GetWorld()->SpawnActorDeferred<AWEVORAEnemyProjectile>(
 		ProjectileClass, ShotTransform, this, this, ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding);
 	if (Shot)
 	{
 		Shot->Damage = FMath::Max(0.0f, AttackDamage);
+		Shot->CombatScope = GetOwner();
 		Shot->Speed = FMath::Max(1.0f, ProjectileSpeed);
 		UGameplayStatics::FinishSpawningActor(Shot, ShotTransform);
 		OnAttackFired();
@@ -214,7 +226,13 @@ void AWEVORAEnemy::ResetCombatState()
 	Target = nullptr;
 	NextAttackTime = GetWorld()->GetTimeSeconds() + FMath::Max(0.1f, AttackInterval);
 	FireTime = 0;
+	RecoveryUntilTime = 0;
 	SetWindupVisual(false);
 	Movement->StopMovementImmediately();
 	ConsumeMovementInputVector();
+}
+
+float AWEVORAEnemy::GetRecoveryRemaining() const
+{
+	return GetWorld() ? FMath::Max(0.0f, RecoveryUntilTime - GetWorld()->GetTimeSeconds()) : 0;
 }

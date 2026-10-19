@@ -13,6 +13,18 @@
 #include "Spell/WEVORASpellWeavingComponent.h"
 #include "Movement/WEVORAManaComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Solo/WEVORAArenaEnemy.h"
+#include "Solo/WEVORASoloProgression.h"
+#include "Spell/WEVORALocalizedStatusComponent.h"
+#include "Spell/WEVORASpellReactionComponent.h"
+#include "Spell/WEVORASpellProjectile.h"
+#include "AI/WEVORAEnemyProjectile.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/SphereComponent.h"
+#include "GameFramework/ProjectileMovementComponent.h"
+#include "EngineUtils.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 
 namespace
 {
@@ -33,6 +45,7 @@ struct FSoloWorld
 		Player = World->SpawnActor<AWEVORACharacter>(Class, FVector(0,0,500), FRotator::ZeroRotator);
 		APlayerController* PC = World->SpawnActor<APlayerController>(); PC->Possess(Player);
 		Run = World->SpawnActor<AWEVORARunDirector>(); Run->bAutoStart = false;
+		Run->bPersistProgress = false;
 		Run->Config = NewObject<UWEVORAArenaConfig>(Run);
 		Run->Config->Waves.SetNum(2);
 		Run->Config->Waves[0].Count = 3; Run->Config->Waves[0].AliveCap = 2;
@@ -141,6 +154,159 @@ bool FSoloChoiceTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Double selection ignored"),S.Run->SelectUpgrade(2));
 	S.Step(); TestFalse(TEXT("Controls restored after countdown"),S.Player->AreRunControlsSuspended());
 	TestEqual(TEXT("Held spell discarded"),S.Player->SpellWeavingComponent->State,EWEVORAWeavingState::Idle);
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSoloSaveTest, "WEVORA.Solo.SaveRoundTripAndDuplicate", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSoloSaveTest::RunTest(const FString& Parameters)
+{
+	FSoloWorld S;
+	UWEVORASoloProgression* P = S.Run->Progression;
+	P->SlotName = TEXT("WEVORA_Automation_")+FGuid::NewGuid().ToString(EGuidFormats::Digits);
+	TestTrue(TEXT("Fresh load"),P->LoadProgress());
+	TestEqual(TEXT("Fresh has two elements"),P->AllowedElements().Num(),2);
+	FWEVORAArenaTrial Trial;
+	TestTrue(TEXT("First trial saves"),P->CompleteTrial(Trial)); TestTrue(TEXT("First unlock new"),P->bLastUnlockNew);
+	UWEVORASoloProgression* Reload = NewObject<UWEVORASoloProgression>(S.Run); Reload->SlotName=P->SlotName;
+	TestTrue(TEXT("Deserialize from disk"),Reload->LoadProgress());
+	TestTrue(TEXT("Trial preserved"),Reload->HasCompleted(Trial.ID));
+	TestTrue(TEXT("Lightning preserved"),Reload->AllowedElements().Contains(EWEVORASpellElement::Lightning));
+	TestTrue(TEXT("Trial can be replayed"),Reload->CompleteTrial(Trial));
+	TestFalse(TEXT("No duplicate reward"),Reload->bLastUnlockNew);
+	TestEqual(TEXT("No duplicate element"),Reload->AllowedElements().Num(),3);
+	Trial.ID=TEXT("AnotherTrial"); Trial.Reward=EWEVORASpellElement::Wind;
+	TestTrue(TEXT("Trial ID to reward data, not clear count"),Reload->CompleteTrial(Trial));
+	TestFalse(TEXT("Base element was already available"),Reload->bLastUnlockNew);
+	UGameplayStatics::DeleteGameInSlot(P->SlotName,0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSoloSaveGuardTest, "WEVORA.Solo.SaveFailureAndVersionGuard", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSoloSaveGuardTest::RunTest(const FString& Parameters)
+{
+	FSoloWorld S; UWEVORASoloProgression* P=S.Run->Progression;
+	P->SlotName=TEXT(""); P->LoadProgress(); FWEVORAArenaTrial Trial;
+	TestFalse(TEXT("Save failure reported"),P->CompleteTrial(Trial));
+	TestTrue(TEXT("Failure retry pending"),P->bSavePending);
+	TestFalse(TEXT("Failure cannot claim permanent unlock"),P->AllowedElements().Contains(EWEVORASpellElement::Lightning));
+	P->SlotName=TEXT("WEVORA_Automation_")+FGuid::NewGuid().ToString(EGuidFormats::Digits);
+	TestTrue(TEXT("Retry actually saves"),P->RetrySave());
+	UWEVORASoloSave* Future=NewObject<UWEVORASoloSave>(); Future->Version=999;
+	UGameplayStatics::SaveGameToSlot(Future,P->SlotName,0);
+	TestFalse(TEXT("Future version refused"),P->LoadProgress());
+	TestFalse(TEXT("Future version never overwritten"),P->CompleteTrial(Trial));
+	TestEqual(TEXT("Future version still on disk"),CastChecked<UWEVORASoloSave>(UGameplayStatics::LoadGameFromSlot(P->SlotName,0))->Version,999);
+	UGameplayStatics::DeleteGameInSlot(P->SlotName,0);
+	P->SlotName=TEXT("WEVORA_Automation_")+FGuid::NewGuid().ToString(EGuidFormats::Digits); P->LoadProgress();
+	Trial.Reward=static_cast<EWEVORASpellElement>(255);
+	TestFalse(TEXT("Unimplemented reward refused"),P->CompleteTrial(Trial));
+	TestFalse(TEXT("No file for fake reward"),UGameplayStatics::DoesSaveGameExist(P->SlotName,0));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSoloFullRunTest, "WEVORA.Solo.FullRunUnlockAndReplay", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSoloFullRunTest::RunTest(const FString& Parameters)
+{
+	FSoloWorld S; S.Run->bPersistProgress=true;
+	S.Run->Progression->SlotName=TEXT("WEVORA_Automation_")+FGuid::NewGuid().ToString(EGuidFormats::Digits);
+	S.Run->Config->Waves.SetNum(3);
+	for (FWEVORAArenaWave& Wave:S.Run->Config->Waves) { Wave.EnemyClass=AWEVORAArenaEnemy::StaticClass(); Wave.Count=1; }
+	S.Run->Config->Waves[1].bBoss=false; S.Run->Config->Waves[2].bBoss=true;
+	S.Run->StartRun(S.Player);
+	for (int32 Index=0; Index<3; ++Index)
+	{
+		S.Step(); S.Step(); S.KillEnemies(); S.Step(); S.Step();
+		if (Index<2) { TestTrue(TEXT("Inter-wave selection"),S.Run->SelectUpgrade(Index)); }
+	}
+	TestEqual(TEXT("Full run victory"),S.Run->State,EWEVORARunState::Victory);
+	TestTrue(TEXT("Trial completed from boss victory"),S.Run->Progression->HasCompleted(S.Run->Config->Trial.ID));
+	TestEqual(TEXT("Victory resets upgrades immediately"),S.Run->Upgrades->Stacks.Num(),0);
+	TestFalse(TEXT("Unlock not inserted into finished run"),S.Player->SpellWeavingComponent->AvailableElements.Contains(EWEVORASpellElement::Lightning));
+	S.Run->Retry();
+	TestTrue(TEXT("Next run gets Lightning"),S.Player->SpellWeavingComponent->AvailableElements.Contains(EWEVORASpellElement::Lightning));
+	S.Step();
+	FWEVORASpellContext Context; Context.Element=EWEVORASpellElement::Lightning; Context.Gesture=EWEVORAGesture::Thrust; FWEVORASpellLaunch Launch;
+	TestTrue(TEXT("Unlocked element has real cast behavior"),S.Player->SpellCastComponent->ResolveCastLaunch(Context,Launch));
+	S.Player->SpellWeavingComponent->Context.Element=EWEVORASpellElement::Lightning;
+	S.Player->SpellWeavingComponent->BeginAttack(); S.Player->SpellWeavingComponent->ReleaseAttack();
+	TestEqual(TEXT("Real Lightning delivery launched"),S.Player->SpellCastComponent->CastCount,1);
+	S.Run->Retry(); TestEqual(TEXT("Active restart allowed"),S.Run->State,EWEVORARunState::Preparing);
+	TestEqual(TEXT("Active restart clears casts"),S.Player->SpellCastComponent->CastCount,0);
+	UGameplayStatics::DeleteGameInSlot(S.Run->Progression->SlotName,0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSoloBossTest, "WEVORA.Solo.BossTellRecoveryAndSharedDamage", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSoloBossTest::RunTest(const FString& Parameters)
+{
+	FSoloWorld S; S.Player->GetCharacterMovement()->DisableMovement();
+	S.Player->SetActorLocation(FVector(1500,0,500));
+	AWEVORAArenaEnemy* Boss=S.World->SpawnActor<AWEVORAArenaEnemy>(FVector(0,0,500),FRotator::ZeroRotator);
+	Boss->bBossStyle=true; Boss->bLockWindupAim=true; Boss->WindupTime=0.2f; Boss->RecoveryTime=1;
+	Boss->AttackRange=4000; Boss->Tick(0.016f);
+	TestTrue(TEXT("Visible windup"),Boss->bWindingUp && Boss->DangerMarker->IsVisible() && Boss->DangerLine->IsVisible());
+	const FVector Aim=Boss->TelegraphTarget;
+	S.Player->SetActorLocation(FVector(1500,700,500)); ++GFrameCounter; S.World->Tick(LEVELTICK_All,0.25f);
+	TestTrue(TEXT("Stationary counterattack window"),Boss->GetRecoveryRemaining()>0);
+	AWEVORAEnemyProjectile* Shot=nullptr;
+	for (TActorIterator<AWEVORAEnemyProjectile> It(S.World); It; ++It) { Shot=*It; break; }
+	if (TestNotNull(TEXT("Shared enemy projectile"),Shot))
+	{
+		TestTrue(TEXT("Shot keeps telegraphed aim after dodge"),Shot->GetActorForwardVector().Equals((Aim-Shot->GetActorLocation()).GetSafeNormal(),0.01f));
+		const float HP=S.Player->HealthComponent->Health;
+		S.Player->SetActorLocation(Aim); Shot->Movement->TickComponent(1,LEVELTICK_All,nullptr);
+		TestTrue(TEXT("Existing projectile and Health damage path"),S.Player->HealthComponent->Health < HP);
+	}
+	Boss->ResetCombatState(); TestEqual(TEXT("Reset clears recovery"),Boss->GetRecoveryRemaining(),0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSoloLocalTest, "WEVORA.Solo.LocalReactionsWithoutCards", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSoloLocalTest::RunTest(const FString& Parameters)
+{
+	FSoloWorld S; S.Run->StartRun(S.Player);
+	AWEVORAArenaEnemy* Enemy=S.World->SpawnActor<AWEVORAArenaEnemy>(FVector(1500,0,500),FRotator::ZeroRotator);
+	USphereComponent* Hand=nullptr; USphereComponent* Arm=nullptr;
+	for (USphereComponent* Zone:Enemy->ZoneColliders)
+	{
+		if (Zone->GetFName()==TEXT("Zone_RightHand")) { Hand=Zone; }
+		if (Zone->GetFName()==TEXT("Zone_RightArm")) { Arm=Zone; }
+	}
+	if (!TestNotNull(TEXT("Hand collider"),Hand) || !TestNotNull(TEXT("Arm collider"),Arm)) { return false; }
+	FWEVORASpellData Fire; FWEVORASpellData Wind; Wind.Element=EWEVORASpellElement::Wind;
+	FHitResult HandHit(Enemy,Hand,Hand->GetComponentLocation(),FVector::UpVector);
+	FHitResult ArmHit(Enemy,Arm,Arm->GetComponentLocation(),FVector::UpVector);
+	const float HP=Enemy->HealthComponent->Health;
+	TestTrue(TEXT("Fire accepted without cards"),Enemy->SpellReactionComponent->ReceiveSpell(Fire,HandHit,nullptr,S.Player));
+	Enemy->LocalStatuses->CommitReactions();
+	TestTrue(TEXT("Local hand burns"),Enemy->LocalStatuses->HasStatus(TEXT("RightHand"),TEXT("Burning")));
+	Enemy->SpellReactionComponent->ReceiveSpell(Wind,ArmHit,nullptr,S.Player); Enemy->LocalStatuses->CommitReactions();
+	TestTrue(TEXT("Wind spreads to torso without upgrade"),Enemy->LocalStatuses->HasStatus(TEXT("Torso"),TEXT("Burning")));
+	Enemy->LocalStatuses->AdvanceStatuses(0.5f);
+	TestTrue(TEXT("Shared health receives damage"),Enemy->HealthComponent->Health<HP);
+	TestEqual(TEXT("No card required"),S.Run->Upgrades->Stacks.Num(),0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSoloProcessSaveTest, "WEVORA.Solo.ProcessPersistence", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSoloProcessSaveTest::RunTest(const FString& Parameters)
+{
+	FString Mode,Slot;
+	if (!FParse::Value(FCommandLine::Get(),TEXT("SoloPersistenceMode="),Mode)) { AddInfo(TEXT("Cross-process write/read is driven separately by validation script.")); return true; }
+	if (!FParse::Value(FCommandLine::Get(),TEXT("SoloPersistenceSlot="),Slot) || !Slot.StartsWith(TEXT("WEVORA_Automation_"))) { AddError(TEXT("Dedicated automation slot required")); return false; }
+	FSoloWorld S; UWEVORASoloProgression* P=S.Run->Progression; P->SlotName=Slot;
+	if (Mode==TEXT("Write"))
+	{
+		TestTrue(TEXT("Fresh process loads"),P->LoadProgress());
+		TestTrue(TEXT("Write persistent trial"),P->CompleteTrial(FWEVORAArenaTrial()));
+	}
+	else if (Mode==TEXT("Read"))
+	{
+		TestTrue(TEXT("Separate process reloads"),P->LoadProgress());
+		TestTrue(TEXT("Unlock survived process restart"),P->AllowedElements().Contains(EWEVORASpellElement::Lightning));
+		TestTrue(TEXT("Trial survived process restart"),P->HasCompleted(TEXT("LightningTrial")));
+		UGameplayStatics::DeleteGameInSlot(Slot,0);
+	}
+	else { AddError(TEXT("Unknown persistence mode")); }
 	return true;
 }
 #endif

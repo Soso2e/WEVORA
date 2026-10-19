@@ -15,6 +15,10 @@ class WEVORA_API AWEVORARunDirector : public AActor
 public:
 	AWEVORARunDirector();
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UWEVORARunUpgrades> Upgrades;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UWEVORASoloProgression> Progression;
+	/** Tests can run without touching the player's save slot. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bPersistProgress = true;
+	UFUNCTION(BlueprintCallable) void RetrySave();
 	UPROPERTY(Transient, BlueprintReadOnly) TArray<FWEVORARunUpgrade> Choices;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) TObjectPtr<UWEVORAArenaConfig> Config;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bAutoStart = true;
@@ -41,6 +45,7 @@ private:
 	float WaveElapsed = 0;
 	float SpawnElapsed = 0;
 	bool bCompletionPending = false;
+	bool bProgressLoaded = false;
 	void BeginWave();
 	void SpawnEnemy();
 	void FinishRun(bool bWon, const FString& Reason);

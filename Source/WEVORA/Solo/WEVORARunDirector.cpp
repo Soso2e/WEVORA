@@ -10,6 +10,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Components/InputComponent.h"
 #include "Solo/WEVORASoloWidget.h"
+#include "Solo/WEVORAArenaEnemy.h"
 
 AWEVORARunDirector::AWEVORARunDirector()
 {
@@ -18,6 +19,7 @@ AWEVORARunDirector::AWEVORARunDirector()
 	PrimaryActorTick.TickGroup = TG_PostPhysics;
 	Config = CreateDefaultSubobject<UWEVORAArenaConfig>(TEXT("PrototypeConfig"));
 	Upgrades = CreateDefaultSubobject<UWEVORARunUpgrades>(TEXT("RunUpgrades"));
+	Progression = CreateDefaultSubobject<UWEVORASoloProgression>(TEXT("PermanentProgress"));
 }
 
 bool AWEVORARunDirector::IsCombatActive() const
@@ -42,7 +44,8 @@ bool AWEVORARunDirector::StartRun(AWEVORACharacter* Player)
 	Pilot->HealthComponent->bDestroyOwnerOnDeath = false;
 	Pilot->HealthComponent->OnDeath.AddUniqueDynamic(this, &ThisClass::PlayerDied);
 	Upgrades->BeginRun(Pilot);
-	Pilot->SpellWeavingComponent->AvailableElements = { EWEVORASpellElement::Fire, EWEVORASpellElement::Wind };
+	if (bPersistProgress && !bProgressLoaded) { Progression->LoadProgress(); bProgressLoaded = true; }
+	Pilot->SpellWeavingComponent->AvailableElements = Progression->AllowedElements();
 	Pilot->SpellWeavingComponent->bRestrictElements = true;
 	Pilot->ResetForPlayground(PlayerStart);
 	Choices.Empty();
@@ -56,7 +59,15 @@ bool AWEVORARunDirector::StartRun(AWEVORACharacter* Player)
 	return true;
 }
 
-void AWEVORARunDirector::Retry() { StartRun(Pilot); }
+void AWEVORARunDirector::Retry()
+{
+	if (!HasAuthority()) { return; }
+	if (State != EWEVORARunState::Idle && State != EWEVORARunState::Victory && State != EWEVORARunState::Defeat)
+	{
+		FinishRun(false,TEXT("Run restarted"));
+	}
+	StartRun(Pilot);
+}
 
 void AWEVORARunDirector::PlayerDied()
 {
@@ -152,8 +163,11 @@ void AWEVORARunDirector::SpawnEnemy()
 	Enemy->MoveSpeed *= FMath::Clamp(Wave.SpeedMultiplier, 0.1f, 4.0f);
 	Enemy->AttackDamage *= FMath::Clamp(Wave.DamageMultiplier, 0.0f, 10.0f);
 	Enemy->DetectionRange = 25000; Enemy->AttackRange = 4500;
-	Enemy->WindupTime = Wave.bBoss ? 1.4f : 0.65f;
+	Enemy->WindupTime = Wave.bBoss ? FMath::Clamp(Wave.BossWindup,0.1f,10.0f) : 0.65f;
 	Enemy->AttackInterval = Wave.bBoss ? 3.0f : 2.0f;
+	Enemy->bLockWindupAim = Wave.bBoss;
+	Enemy->RecoveryTime = Wave.bBoss ? FMath::Clamp(Wave.BossRecovery,0.1f,10.0f) : 0;
+	if (AWEVORAArenaEnemy* ArenaEnemy = Cast<AWEVORAArenaEnemy>(Enemy)) { ArenaEnemy->bBossStyle = Wave.bBoss; }
 	UGameplayStatics::FinishSpawningActor(Enemy, Transform);
 	Enemies.Add(Enemy); ++SpawnedCount;
 }
@@ -217,7 +231,9 @@ void AWEVORARunDirector::CleanupCombat()
 	{
 		if (!It->IsA<AWEVORASpellDelivery>() && !It->IsA<AWEVORAEnemyProjectile>()) { continue; }
 		AActor* DeliveryOwner = It->GetOwner();
-		if (DeliveryOwner && (DeliveryOwner == Pilot || DeliveryOwner == this || DeliveryOwner->GetOwner() == this)) { It->Destroy(); }
+		const AWEVORAEnemyProjectile* EnemyShot = Cast<AWEVORAEnemyProjectile>(*It);
+		if ((EnemyShot && EnemyShot->CombatScope == this) ||
+			(DeliveryOwner && (DeliveryOwner == Pilot || DeliveryOwner == this || DeliveryOwner->GetOwner() == this))) { It->Destroy(); }
 	}
 	for (AWEVORAEnemy* Enemy : Enemies) { if (IsValid(Enemy)) { Enemy->Destroy(); } }
 	Enemies.Empty();
@@ -231,7 +247,18 @@ void AWEVORARunDirector::FinishRun(bool bWon, const FString& Reason)
 	State = bWon ? EWEVORARunState::Victory : EWEVORARunState::Defeat;
 	ResultReason = Reason;
 	CleanupCombat();
+	if (bWon && bPersistProgress)
+	{
+		Progression->CompleteTrial(Config->Trial);
+		ResultReason += TEXT("\n") + Progression->Status;
+	}
 	Upgrades->Reset(); Choices.Empty(); SetControls(false);
+}
+
+void AWEVORARunDirector::RetrySave()
+{
+	if (!HasAuthority() || (State != EWEVORARunState::Victory && State != EWEVORARunState::Defeat) || !Progression->bSavePending) { return; }
+	Progression->RetrySave(); ResultReason += TEXT("\n") + Progression->Status; SetControls(false);
 }
 
 void AWEVORARunDirector::EndPlay(const EEndPlayReason::Type Reason)
@@ -240,5 +267,6 @@ void AWEVORARunDirector::EndPlay(const EEndPlayReason::Type Reason)
 	Upgrades->Reset();
 	if (Pilot) { Pilot->HealthComponent->OnDeath.RemoveDynamic(this, &ThisClass::PlayerDied); }
 	if (Modal) { Modal->RemoveFromParent(); }
+	if (IsValid(Pilot)) { Pilot->SpellWeavingComponent->bCombatInputEnabled = true; Pilot->SuspendRunControls(false); }
 	Super::EndPlay(Reason);
 }

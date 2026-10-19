@@ -1,4 +1,5 @@
 #include "Solo/WEVORAArenaConfig.h"
+#include "Solo/WEVORAArenaEnemy.h"
 
 UWEVORAArenaConfig::UWEVORAArenaConfig()
 {
@@ -20,7 +21,7 @@ UWEVORAArenaConfig::UWEVORAArenaConfig()
 	for (int32 Index = 0; Index < 5; ++Index)
 	{
 		FWEVORAArenaWave Wave;
-		Wave.EnemyClass = AWEVORAEnemy::StaticClass();
+		Wave.EnemyClass = AWEVORAArenaEnemy::StaticClass();
 		Wave.Count = 4 + Index * 2;
 		Wave.Health = 60 + Index * 15;
 		Wave.AliveCap = 3 + Index / 2;
