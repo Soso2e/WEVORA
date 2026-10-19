@@ -75,6 +75,7 @@ void UWEVORASpellCastComponent::HandleCast(const FWEVORASpellContext& Context)
 {
 	APawn* Pawn = Cast<APawn>(GetOwner());
 	if (!Pawn || !Pawn->HasAuthority() || !Pawn->GetController()) { return; }
+	if (Weaving && !Weaving->bCombatInputEnabled) { return; }
 	int32 ActiveDeliveries = 0;
 	for (TActorIterator<AWEVORASpellDelivery> It(GetWorld()); It; ++It)
 	{
@@ -146,6 +147,8 @@ void UWEVORASpellCastComponent::HandleCast(const FWEVORASpellContext& Context)
 
 bool UWEVORASpellCastComponent::ResolveCastLaunch(const FWEVORASpellContext& Context, FWEVORASpellLaunch& Launch) const
 {
+	const UWEVORASpellWeavingComponent* Input = GetOwner()->FindComponentByClass<UWEVORASpellWeavingComponent>();
+	if (Input && Input->bRestrictElements && !Input->AvailableElements.Contains(Context.Element)) { return false; }
 	const AWEVORACharacter* Pilot = Cast<AWEVORACharacter>(GetOwner());
 	if (!(Pilot ? Pilot->ResolveSpellLaunch(Context, Launch) : ResolveSpell(Context, Launch))) { return false; }
 	// Apply after Blueprint resolution as saved design graphs also supply base power.
@@ -172,6 +175,10 @@ bool UWEVORASpellCastComponent::ResolveCastLaunch(const FWEVORASpellContext& Con
 			Launch.Spell.Power *= Shape->WovenPowerMultiplier;
 		}
 	}
+	const float RadiusScale = FMath::Clamp(RunRadiusMultiplier, 0.1f, 3.0f);
+	Launch.Parameters.Radius *= RadiusScale;
+	Launch.Volume.Width *= RadiusScale;
+	Launch.Volume.Height *= RadiusScale;
 	if (Launch.Spell.Delivery != EWEVORASpellDelivery::Projectile &&
 		(!FMath::IsFinite(Launch.Volume.Range) || Launch.Volume.Range < 1 ||
 		!FMath::IsFinite(Launch.Volume.Width) || Launch.Volume.Width < 1 ||

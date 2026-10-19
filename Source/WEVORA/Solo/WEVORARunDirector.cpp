@@ -9,6 +9,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/InputComponent.h"
+#include "Solo/WEVORASoloWidget.h"
 
 AWEVORARunDirector::AWEVORARunDirector()
 {
@@ -16,6 +17,7 @@ AWEVORARunDirector::AWEVORARunDirector()
 	PrimaryActorTick.TickInterval = 0.05f;
 	PrimaryActorTick.TickGroup = TG_PostPhysics;
 	Config = CreateDefaultSubobject<UWEVORAArenaConfig>(TEXT("PrototypeConfig"));
+	Upgrades = CreateDefaultSubobject<UWEVORARunUpgrades>(TEXT("RunUpgrades"));
 }
 
 bool AWEVORARunDirector::IsCombatActive() const
@@ -28,6 +30,7 @@ bool AWEVORARunDirector::StartRun(AWEVORACharacter* Player)
 	if (!HasAuthority() || !IsValid(Player) || !Config || Config->Waves.IsEmpty() || Config->SpawnOffsets.IsEmpty()) { return false; }
 	if (State != EWEVORARunState::Idle && State != EWEVORARunState::Victory && State != EWEVORARunState::Defeat) { return false; }
 	CleanupCombat();
+	Upgrades->Reset();
 	if (Pilot) { Pilot->HealthComponent->OnDeath.RemoveDynamic(this, &ThisClass::PlayerDied); }
 	if (Pilot != Player) { PlayerStart = Player->GetActorTransform(); }
 	Pilot = Player;
@@ -35,17 +38,21 @@ bool AWEVORARunDirector::StartRun(AWEVORACharacter* Player)
 	{
 		EnableInput(PC);
 		InputComponent->BindKey(EKeys::R, IE_Pressed, this, &ThisClass::Retry);
-		InputComponent->BindKey(EKeys::Enter, IE_Pressed, this, &ThisClass::ContinueAfterReward);
 	}
 	Pilot->HealthComponent->bDestroyOwnerOnDeath = false;
 	Pilot->HealthComponent->OnDeath.AddUniqueDynamic(this, &ThisClass::PlayerDied);
+	Upgrades->BeginRun(Pilot);
+	Pilot->SpellWeavingComponent->AvailableElements = { EWEVORASpellElement::Fire, EWEVORASpellElement::Wind };
+	Pilot->SpellWeavingComponent->bRestrictElements = true;
 	Pilot->ResetForPlayground(PlayerStart);
+	Choices.Empty();
 	WaveIndex = 0; SpawnedCount = KilledCount = 0;
 	WaveElapsed = SpawnElapsed = 0;
 	bCompletionPending = false;
 	ResultReason.Empty();
 	Countdown = FMath::Max(0.0f, Config->PreparationSeconds);
 	State = EWEVORARunState::Preparing;
+	SetControls(false);
 	return true;
 }
 
@@ -70,6 +77,57 @@ void AWEVORARunDirector::BeginWave()
 	State = Wave.bBoss ? EWEVORARunState::BossFight : EWEVORARunState::WaveActive;
 	WaveElapsed = 0; SpawnElapsed = FMath::Max(0.1f, Wave.SpawnInterval);
 	SpawnedCount = KilledCount = 0; bCompletionPending = false;
+	SetControls(true);
+}
+
+void AWEVORARunDirector::SetControls(bool bCombat)
+{
+	if (!Pilot) { return; }
+	Pilot->SpellWeavingComponent->ResetCombat();
+	Pilot->SpellWeavingComponent->bCombatInputEnabled = bCombat;
+	Pilot->SuspendRunControls(!bCombat);
+	APlayerController* PC = Cast<APlayerController>(Pilot->GetController());
+	if (!PC || !PC->GetLocalPlayer()) { return; }
+	const bool bShowModal = State == EWEVORARunState::UpgradeChoice || State == EWEVORARunState::Victory || State == EWEVORARunState::Defeat;
+	if (bShowModal)
+	{
+		if (!Modal)
+		{
+			Modal = CreateWidget<UWEVORASoloWidget>(PC); Modal->AddToPlayerScreen(100);
+		}
+		Modal->Show(this);
+		FInputModeUIOnly Mode; Mode.SetWidgetToFocus(Modal->TakeWidget()); PC->SetInputMode(Mode);
+		PC->bShowMouseCursor = true;
+	}
+	else
+	{
+		if (Modal) { Modal->SetVisibility(ESlateVisibility::Collapsed); }
+		PC->SetInputMode(FInputModeGameOnly()); PC->bShowMouseCursor = false;
+	}
+}
+
+void AWEVORARunDirector::OfferUpgrades()
+{
+	Choices.Empty();
+	for (EWEVORAUpgradeFamily Family : { EWEVORAUpgradeFamily::Element, EWEVORAUpgradeFamily::Mobility, EWEVORAUpgradeFamily::Survival })
+	{
+		for (const FWEVORARunUpgrade& Upgrade : Config->Upgrades)
+		{
+			if (Upgrade.Family == Family && !Upgrade.ID.IsNone() && Upgrades->Stacks.FindRef(Upgrade.ID) < FMath::Clamp(Upgrade.MaxStacks,1,10))
+			{
+				Choices.Add(Upgrade); break;
+			}
+		}
+	}
+	if (Choices.IsEmpty()) { FinishRun(false,TEXT("Upgrade pool exhausted; adjust trial data")); return; }
+	State = EWEVORARunState::UpgradeChoice; SetControls(false);
+}
+
+bool AWEVORARunDirector::SelectUpgrade(int32 Index)
+{
+	if (!HasAuthority() || State != EWEVORARunState::UpgradeChoice || !Choices.IsValidIndex(Index)) { return false; }
+	if (!Upgrades->Apply(Choices[Index])) { return false; }
+	Choices.Empty(); ContinueAfterReward(); return true;
 }
 
 void AWEVORARunDirector::ContinueAfterReward()
@@ -78,6 +136,7 @@ void AWEVORARunDirector::ContinueAfterReward()
 	++WaveIndex;
 	Countdown = FMath::Max(0.0f, Config->PreparationSeconds);
 	State = EWEVORARunState::Preparing;
+	SetControls(false);
 }
 
 void AWEVORARunDirector::SpawnEnemy()
@@ -140,7 +199,7 @@ void AWEVORARunDirector::Tick(float DeltaSeconds)
 		// Settle one tick before a reward: a final kill and player death in one frame must lose.
 		if (!bCompletionPending) { bCompletionPending = true; return; }
 		if (WaveIndex == Config->Waves.Num() - 1) { FinishRun(true, TEXT("Trial cleared")); }
-		else { CleanupCombat(); State = EWEVORARunState::UpgradeChoice; }
+		else { CleanupCombat(); OfferUpgrades(); }
 		return;
 	}
 	SpawnElapsed += DeltaSeconds;
@@ -172,11 +231,14 @@ void AWEVORARunDirector::FinishRun(bool bWon, const FString& Reason)
 	State = bWon ? EWEVORARunState::Victory : EWEVORARunState::Defeat;
 	ResultReason = Reason;
 	CleanupCombat();
+	Upgrades->Reset(); Choices.Empty(); SetControls(false);
 }
 
 void AWEVORARunDirector::EndPlay(const EEndPlayReason::Type Reason)
 {
 	CleanupCombat();
+	Upgrades->Reset();
 	if (Pilot) { Pilot->HealthComponent->OnDeath.RemoveDynamic(this, &ThisClass::PlayerDied); }
+	if (Modal) { Modal->RemoveFromParent(); }
 	Super::EndPlay(Reason);
 }

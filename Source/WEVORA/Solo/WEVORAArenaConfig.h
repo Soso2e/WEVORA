@@ -2,6 +2,7 @@
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "AI/WEVORAEnemy.h"
+#include "Solo/WEVORARunUpgrades.h"
 #include "WEVORAArenaConfig.generated.h"
 
 UENUM(BlueprintType)
@@ -28,6 +29,7 @@ class WEVORA_API UWEVORAArenaConfig : public UDataAsset
 	GENERATED_BODY()
 public:
 	UWEVORAArenaConfig();
+	UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FWEVORARunUpgrade> Upgrades;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FWEVORAArenaWave> Waves;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FVector> SpawnOffsets;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta=(ClampMin="0")) float PreparationSeconds = 3;

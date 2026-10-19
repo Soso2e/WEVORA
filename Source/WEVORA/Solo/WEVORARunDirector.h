@@ -5,6 +5,7 @@
 #include "WEVORARunDirector.generated.h"
 
 class AWEVORACharacter;
+class UWEVORASoloWidget;
 
 /** Owns only this run's combatants. Tick-based scheduling has no orphaned timer callbacks. */
 UCLASS(Blueprintable)
@@ -13,6 +14,8 @@ class WEVORA_API AWEVORARunDirector : public AActor
 	GENERATED_BODY()
 public:
 	AWEVORARunDirector();
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly) TObjectPtr<UWEVORARunUpgrades> Upgrades;
+	UPROPERTY(Transient, BlueprintReadOnly) TArray<FWEVORARunUpgrade> Choices;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) TObjectPtr<UWEVORAArenaConfig> Config;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) bool bAutoStart = true;
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly) EWEVORARunState State = EWEVORARunState::Idle;
@@ -25,11 +28,15 @@ public:
 	UPROPERTY(Transient, BlueprintReadOnly) TArray<TObjectPtr<AWEVORAEnemy>> Enemies;
 	UFUNCTION(BlueprintCallable) bool StartRun(AWEVORACharacter* Player);
 	UFUNCTION(BlueprintCallable) void Retry();
-	UFUNCTION(BlueprintCallable) void ContinueAfterReward();
+	UFUNCTION(BlueprintCallable) bool SelectUpgrade(int32 Index);
 	UFUNCTION(BlueprintPure) bool IsCombatActive() const;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 private:
+	UPROPERTY(Transient) TObjectPtr<UWEVORASoloWidget> Modal;
+	void OfferUpgrades();
+	void ContinueAfterReward();
+	void SetControls(bool bCombat);
 	FTransform PlayerStart;
 	float WaveElapsed = 0;
 	float SpawnElapsed = 0;

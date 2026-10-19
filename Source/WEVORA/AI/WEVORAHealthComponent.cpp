@@ -30,6 +30,21 @@ void UWEVORAHealthComponent::ResetHealth()
 	OnHealthChanged.Broadcast(Health, MaxHealth);
 }
 
+void UWEVORAHealthComponent::Heal(float Amount)
+{
+	if (!GetOwner()->HasAuthority() || !IsAlive() || !FMath::IsFinite(Amount) || Amount <= 0) { return; }
+	Health = FMath::Clamp(Health + Amount, 0.0f, MaxHealth);
+	OnHealthChanged.Broadcast(Health, MaxHealth);
+}
+
+void UWEVORAHealthComponent::SetMaxHealth(float Value)
+{
+	if (!GetOwner()->HasAuthority() || !FMath::IsFinite(Value)) { return; }
+	MaxHealth = FMath::Max(1.0f, Value);
+	Health = FMath::Clamp(Health, 0.0f, MaxHealth);
+	OnHealthChanged.Broadcast(Health, MaxHealth);
+}
+
 void UWEVORAHealthComponent::ReceiveDamage(AActor* DamagedActor, float Damage,
 	const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser)
 {
