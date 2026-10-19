@@ -46,6 +46,8 @@ private:
 	float SpawnElapsed = 0;
 	bool bCompletionPending = false;
 	bool bProgressLoaded = false;
+	bool bOriginalSpellDebug = true;
+	bool bOriginalDamageFeedback = false;
 	void BeginWave();
 	void SpawnEnemy();
 	void FinishRun(bool bWon, const FString& Reason);

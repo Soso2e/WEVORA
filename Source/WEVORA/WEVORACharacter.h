@@ -52,6 +52,7 @@ class AWEVORACharacter : public ACharacter
 public:
 	/** Solo runtime layer; authored movement values remain intact. */
 	UPROPERTY(Transient, BlueprintReadOnly, Category="Solo") float RunSpeedMultiplier = 1;
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Solo") bool bUseSoloHUD = false;
 	void SuspendRunControls(bool bSuspend);
 	bool AreRunControlsSuspended() const { return bRunControlsSuspended; }
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="WEVORA Aim")

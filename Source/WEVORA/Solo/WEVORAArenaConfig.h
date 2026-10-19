@@ -32,6 +32,7 @@ class WEVORA_API UWEVORAArenaConfig : public UDataAsset
 	GENERATED_BODY()
 public:
 	UWEVORAArenaConfig();
+	FString Validate() const;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) FWEVORAArenaTrial Trial;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FWEVORARunUpgrade> Upgrades;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FWEVORAArenaWave> Waves;

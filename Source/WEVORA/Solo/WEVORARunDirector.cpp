@@ -29,13 +29,26 @@ bool AWEVORARunDirector::IsCombatActive() const
 
 bool AWEVORARunDirector::StartRun(AWEVORACharacter* Player)
 {
-	if (!HasAuthority() || !IsValid(Player) || !Config || Config->Waves.IsEmpty() || Config->SpawnOffsets.IsEmpty()) { return false; }
+	if (!HasAuthority() || !IsValid(Player)) { return false; }
 	if (State != EWEVORARunState::Idle && State != EWEVORARunState::Victory && State != EWEVORARunState::Defeat) { return false; }
+	const FString ConfigurationError = Config ? Config->Validate() : TEXT("Arena config is missing");
+	if (!ConfigurationError.IsEmpty())
+	{
+		Pilot=Player; State=EWEVORARunState::Defeat; ResultReason=ConfigurationError; SetControls(false); return false;
+	}
 	CleanupCombat();
 	Upgrades->Reset();
 	if (Pilot) { Pilot->HealthComponent->OnDeath.RemoveDynamic(this, &ThisClass::PlayerDied); }
-	if (Pilot != Player) { PlayerStart = Player->GetActorTransform(); }
+	if (Pilot != Player)
+	{
+		PlayerStart = Player->GetActorTransform();
+		bOriginalSpellDebug=Player->SpellWeavingComponent->bShowDebug;
+		bOriginalDamageFeedback=Player->HealthComponent->bShowDamageFeedback;
+	}
 	Pilot = Player;
+	Pilot->bUseSoloHUD=true;
+	Pilot->SpellWeavingComponent->bShowDebug=false;
+	Pilot->HealthComponent->bShowDamageFeedback=false;
 	if (APlayerController* PC = Cast<APlayerController>(Pilot->GetController()); PC && !InputComponent)
 	{
 		EnableInput(PC);
@@ -267,6 +280,16 @@ void AWEVORARunDirector::EndPlay(const EEndPlayReason::Type Reason)
 	Upgrades->Reset();
 	if (Pilot) { Pilot->HealthComponent->OnDeath.RemoveDynamic(this, &ThisClass::PlayerDied); }
 	if (Modal) { Modal->RemoveFromParent(); }
-	if (IsValid(Pilot)) { Pilot->SpellWeavingComponent->bCombatInputEnabled = true; Pilot->SuspendRunControls(false); }
+	if (IsValid(Pilot))
+	{
+		Pilot->bUseSoloHUD=false;
+		Pilot->SpellWeavingComponent->bShowDebug=bOriginalSpellDebug;
+		Pilot->HealthComponent->bShowDamageFeedback=bOriginalDamageFeedback;
+		Pilot->SpellWeavingComponent->bCombatInputEnabled = true; Pilot->SuspendRunControls(false);
+		if (APlayerController* PC=Cast<APlayerController>(Pilot->GetController()); PC && PC->GetLocalPlayer())
+		{
+			PC->SetInputMode(FInputModeGameOnly()); PC->bShowMouseCursor=false;
+		}
+	}
 	Super::EndPlay(Reason);
 }

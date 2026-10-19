@@ -11,6 +11,7 @@ class WEVORA_API AWEVORASoloGameMode : public AGameModeBase
 public:
 	AWEVORASoloGameMode();
 	virtual void BeginPlay() override;
+	virtual void RestartPlayer(AController* NewPlayer) override;
 };
 
 UCLASS()

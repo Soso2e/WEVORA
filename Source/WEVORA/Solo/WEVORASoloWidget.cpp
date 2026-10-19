@@ -13,6 +13,11 @@ void UWEVORASoloWidget::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
 	SetIsFocusable(true);
+}
+
+void UWEVORASoloWidget::BuildControls()
+{
+	if (Heading) { return; }
 	UBorder* Backdrop = WidgetTree->ConstructWidget<UBorder>();
 	Backdrop->SetBrushColor(FLinearColor(0.015f,0.025f,0.05f,0.97f));
 	Backdrop->SetPadding(FMargin(70,50));
@@ -38,6 +43,7 @@ void UWEVORASoloWidget::NativeOnInitialized()
 
 void UWEVORASoloWidget::Show(AWEVORARunDirector* Director)
 {
+	BuildControls();
 	Run = Director;
 	const bool bChoice = Run->State == EWEVORARunState::UpgradeChoice;
 	Heading->SetText(FText::FromString(bChoice

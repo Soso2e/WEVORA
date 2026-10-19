@@ -32,3 +32,42 @@ UWEVORAArenaConfig::UWEVORAArenaConfig()
 		Waves.Add(Wave);
 	}
 }
+
+FString UWEVORAArenaConfig::Validate() const
+{
+	if (Waves.IsEmpty() || Waves.Num()>32 || !Waves.Last().bBoss) { return TEXT("Trial needs 1-32 waves ending in a boss"); }
+	if (SpawnOffsets.IsEmpty() || !FMath::IsFinite(PreparationSeconds) || PreparationSeconds<0 || PreparationSeconds>60
+		|| !FMath::IsFinite(WaveTimeout) || WaveTimeout<10 || BoundsExtent.ContainsNaN()
+		|| BoundsExtent.GetMin()<500 || !FMath::IsFinite(MinimumHeight) || MinimumHeight>=BoundsExtent.Z)
+	{
+		return TEXT("Invalid arena bounds, preparation, timeout or spawn positions");
+	}
+	for (const FVector& Offset:SpawnOffsets)
+	{
+		if (Offset.ContainsNaN() || FMath::Abs(Offset.X)>BoundsExtent.X-200 || FMath::Abs(Offset.Y)>BoundsExtent.Y-200
+			|| Offset.Z>BoundsExtent.Z-200 || Offset.Z<MinimumHeight+200) { return TEXT("Spawn position outside safe arena bounds"); }
+	}
+	for (const FWEVORAArenaWave& Wave:Waves)
+	{
+		if (!Wave.EnemyClass || Wave.EnemyClass->HasAnyClassFlags(CLASS_Abstract) || Wave.Count<1 || Wave.Count>100 || Wave.AliveCap<1 || Wave.AliveCap>16
+			|| !FMath::IsFinite(Wave.SpawnInterval) || Wave.SpawnInterval<0.1f || !FMath::IsFinite(Wave.Health) || Wave.Health<1
+			|| !FMath::IsFinite(Wave.SpeedMultiplier) || Wave.SpeedMultiplier<0.1f || Wave.SpeedMultiplier>4
+			|| !FMath::IsFinite(Wave.DamageMultiplier) || Wave.DamageMultiplier<0 || Wave.DamageMultiplier>10
+			|| !FMath::IsFinite(Wave.BossWindup) || Wave.BossWindup<0.1f || !FMath::IsFinite(Wave.BossRecovery) || Wave.BossRecovery<0.1f)
+		{
+			return TEXT("Invalid wave class, count, cap, cadence or combat values");
+		}
+	}
+	if (Trial.ID.IsNone() || !UWEVORASoloProgression::IsSupported(Trial.Reward)) { return TEXT("Trial reward is not implemented"); }
+	TSet<FName> IDs; int32 AvailableSelections=0;
+	for (const FWEVORARunUpgrade& Upgrade:Upgrades)
+	{
+		if (Upgrade.ID.IsNone() || IDs.Contains(Upgrade.ID) || Upgrade.MaxStacks<1 || Upgrade.MaxStacks>10
+			|| static_cast<uint8>(Upgrade.Family)>static_cast<uint8>(EWEVORAUpgradeFamily::Survival)) { return TEXT("Invalid upgrade ID, family or stack cap"); }
+		const float Values[]={Upgrade.RadiusBonus,Upgrade.SpeedBonus,Upgrade.RecoveryBonus,Upgrade.MaxHealthBonus,Upgrade.Heal};
+		for (float Value:Values) { if (!FMath::IsFinite(Value) || Value<0) { return TEXT("Invalid upgrade values"); } }
+		IDs.Add(Upgrade.ID); AvailableSelections+=Upgrade.MaxStacks;
+	}
+	if (AvailableSelections<Waves.Num()-1) { return TEXT("Not enough upgrade stacks for this trial"); }
+	return FString();
+}

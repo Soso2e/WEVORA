@@ -18,6 +18,7 @@ protected:
 	virtual void NativeOnInitialized() override;
 	virtual FReply NativeOnKeyDown(const FGeometry& Geometry, const FKeyEvent& Event) override;
 private:
+	void BuildControls();
 	UPROPERTY(Transient) TObjectPtr<AWEVORARunDirector> Run;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> Heading;
 	UPROPERTY(Transient) TArray<TObjectPtr<UTextBlock>> Labels;

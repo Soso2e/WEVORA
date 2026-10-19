@@ -39,6 +39,7 @@ bool UWEVORASoloProgression::HasCompleted(FName ID) const { return Data && Data-
 
 bool UWEVORASoloProgression::CompleteTrial(const FWEVORAArenaTrial& Trial)
 {
+	if (GetOwner() && !GetOwner()->HasAuthority()) { return false; }
 	if (!bLoaded) { LoadProgress(); }
 	bLastUnlockNew = false;
 	if (!bWritable) { return false; }

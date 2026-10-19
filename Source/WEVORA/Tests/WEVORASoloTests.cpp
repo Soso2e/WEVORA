@@ -25,6 +25,15 @@
 #include "EngineUtils.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "Solo/WEVORASoloGameMode.h"
+#include "Solo/WEVORASoloWidget.h"
+#include "Playground/WEVORACombatPlayground.h"
+#include "Engine/Level.h"
+#include "GameFramework/WorldSettings.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/Button.h"
+#include "TimerManager.h"
+#include <limits>
 
 namespace
 {
@@ -87,7 +96,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSoloDefeatTest, "WEVORA.Solo.DefeatPrecedenceA
 bool FSoloDefeatTest::RunTest(const FString& Parameters)
 {
 	FSoloWorld S;
-	S.Run->Config->Waves.SetNum(1); S.Run->Config->Waves[0].Count = 1;
+	S.Run->Config->Waves.SetNum(1); S.Run->Config->Waves[0].Count = 1; S.Run->Config->Waves[0].bBoss = true;
 	S.Run->StartRun(S.Player); S.Step(); S.Step(); S.KillEnemies(); S.Step();
 	UGameplayStatics::ApplyDamage(S.Player,100000,nullptr,nullptr,UDamageType::StaticClass()); S.Step();
 	TestEqual(TEXT("Simultaneous final kill loses"), S.Run->State, EWEVORARunState::Defeat);
@@ -276,10 +285,20 @@ bool FSoloLocalTest::RunTest(const FString& Parameters)
 	FHitResult HandHit(Enemy,Hand,Hand->GetComponentLocation(),FVector::UpVector);
 	FHitResult ArmHit(Enemy,Arm,Arm->GetComponentLocation(),FVector::UpVector);
 	const float HP=Enemy->HealthComponent->Health;
-	TestTrue(TEXT("Fire accepted without cards"),Enemy->SpellReactionComponent->ReceiveSpell(Fire,HandHit,nullptr,S.Player));
+	auto HitZone=[&](const FWEVORASpellData& Spell,USphereComponent* Zone)
+	{
+		const FTransform Start(FRotator::ZeroRotator,Zone->GetComponentLocation()-FVector(500,0,0));
+		AWEVORASpellProjectile* Shot=S.World->SpawnActorDeferred<AWEVORASpellProjectile>(AWEVORASpellProjectile::StaticClass(),Start,S.Player,S.Player,ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		FWEVORASpellLaunch Launch; Launch.Spell=Spell; Launch.Direction=FVector::ForwardVector;
+		Launch.Parameters.Speed=2000; Launch.Parameters.Radius=12; Shot->bLogEvents=false;
+		Shot->InitializeSpell(Launch); UGameplayStatics::FinishSpawningActor(Shot,Start);
+		Shot->Movement->TickComponent(0.4f,LEVELTICK_All,nullptr);
+		TestTrue(TEXT("Real projectile collided and was consumed"),Shot->IsActorBeingDestroyed());
+	};
+	HitZone(Fire,Hand);
 	Enemy->LocalStatuses->CommitReactions();
 	TestTrue(TEXT("Local hand burns"),Enemy->LocalStatuses->HasStatus(TEXT("RightHand"),TEXT("Burning")));
-	Enemy->SpellReactionComponent->ReceiveSpell(Wind,ArmHit,nullptr,S.Player); Enemy->LocalStatuses->CommitReactions();
+	HitZone(Wind,Arm); Enemy->LocalStatuses->CommitReactions();
 	TestTrue(TEXT("Wind spreads to torso without upgrade"),Enemy->LocalStatuses->HasStatus(TEXT("Torso"),TEXT("Burning")));
 	Enemy->LocalStatuses->AdvanceStatuses(0.5f);
 	TestTrue(TEXT("Shared health receives damage"),Enemy->HealthComponent->Health<HP);
@@ -307,6 +326,84 @@ bool FSoloProcessSaveTest::RunTest(const FString& Parameters)
 		UGameplayStatics::DeleteGameInSlot(Slot,0);
 	}
 	else { AddError(TEXT("Unknown persistence mode")); }
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSoloMapWidgetTest, "WEVORA.Solo.PersistedMapAndCardUI", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSoloMapWidgetTest::RunTest(const FString& Parameters)
+{
+	UWorld* Map=LoadObject<UWorld>(nullptr,TEXT("/Game/WEVORA/Maps/L_SoloArenaPrototype.L_SoloArenaPrototype"));
+	if (!TestNotNull(TEXT("Saved solo map loads"),Map)) { return false; }
+	TestEqual(TEXT("Opt-in solo mode"),Map->GetWorldSettings()->DefaultGameMode.Get(),AWEVORASoloGameMode::StaticClass());
+	int32 Directors=0,Practice=0;
+	for (AActor* Actor:Map->PersistentLevel->Actors)
+	{
+		if (const AWEVORARunDirector* Director=Cast<AWEVORARunDirector>(Actor))
+		{
+			++Directors;
+			TestTrue(TEXT("Saved config valid"),Director->Config && Director->Config->Validate().IsEmpty());
+			TestEqual(TEXT("Saved five-wave hypothesis"),Director->Config->Waves.Num(),5);
+		}
+		if (Actor && (Actor->IsA<AWEVORACombatPlayground>() || Actor->IsA<AWEVORAEnemy>())) { ++Practice; }
+	}
+	TestEqual(TEXT("One director"),Directors,1); TestEqual(TEXT("No practice actors or pre-spawned enemies"),Practice,0);
+	FSoloWorld S; S.Run->Config->Waves[0].Count=1;
+	S.Run->StartRun(S.Player); S.Step(); S.Step(); S.KillEnemies(); S.Step(); S.Step();
+	UWEVORASoloWidget* Widget=CreateWidget<UWEVORASoloWidget>(S.World->GetGameInstance());
+	if (!TestNotNull(TEXT("Native card widget initializes"),Widget)) { return false; }
+	Widget->Show(S.Run);
+	TArray<UButton*> Buttons;
+	Widget->WidgetTree->ForEachWidget([&](UWidget* Child) { if (UButton* Button=Cast<UButton>(Child)) { Buttons.Add(Button); } });
+	if (!TestEqual(TEXT("Three visible clickable cards"),Buttons.Num(),3)) { return false; }
+	const float HP=S.Player->HealthComponent->MaxHealth;
+	Buttons[2]->OnClicked.Broadcast();
+	TestEqual(TEXT("Mouse button applies Survival card"),S.Player->HealthComponent->MaxHealth,HP+30);
+	TestEqual(TEXT("Mouse selection advances once"),S.Run->State,EWEVORARunState::Preparing);
+	Buttons[2]->OnClicked.Broadcast(); TestEqual(TEXT("Stale UI cannot apply twice"),S.Player->HealthComponent->MaxHealth,HP+30);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSoloCleanupTest, "WEVORA.Solo.OwnedCleanupAndPendingReactions", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSoloCleanupTest::RunTest(const FString& Parameters)
+{
+	FSoloWorld S; S.Run->StartRun(S.Player); S.Step(); S.Step();
+	AWEVORAArenaEnemy* Enemy=CastChecked<AWEVORAArenaEnemy>(S.Run->Enemies[0]);
+	AWEVORAEnemyProjectile* OldShot=S.World->SpawnActor<AWEVORAEnemyProjectile>(FVector(8000,0,500),FRotator::ZeroRotator);
+	OldShot->SetOwner(Enemy); OldShot->CombatScope=S.Run;
+	FHitResult Hit(Enemy,Enemy->Collision,Enemy->GetActorLocation(),FVector::UpVector);
+	FWEVORASpellData Fire; Enemy->SpellReactionComponent->ReceiveSpell(Fire,Hit,nullptr,S.Player);
+	TestTrue(TEXT("Pending local state exists"),Enemy->LocalStatuses->HasStatus(TEXT("Torso"),TEXT("Burning")));
+	S.Run->Retry();
+	TestTrue(TEXT("Old projectile removed via stable scope"),OldShot->IsActorBeingDestroyed());
+	TestTrue(TEXT("Old enemy removed"),Enemy->IsActorBeingDestroyed());
+	TestEqual(TEXT("Old localized snapshots cleared"),Enemy->LocalStatuses->States.Num(),0);
+	Enemy->LocalStatuses->CommitReactions(); TestEqual(TEXT("Pending reaction cannot reappear"),Enemy->LocalStatuses->States.Num(),0);
+	S.Step(); S.Step();
+	AWEVORAEnemy* Fresh=S.Run->Enemies[0];
+	TestEqual(TEXT("Fresh enemy full configured health"),Fresh->HealthComponent->Health,S.Run->Config->Waves[0].Health);
+	UGameplayStatics::ApplyDamage(Fresh,100000,nullptr,S.Player,UDamageType::StaticClass()); S.Step();
+	AWEVORAEnemyProjectile* Orphan=S.World->SpawnActor<AWEVORAEnemyProjectile>(FVector(8000,0,500),FRotator::ZeroRotator);
+	Orphan->CombatScope=S.Run; // Simulate the original firing enemy having been collected already.
+	S.Run->Destroy(); TestTrue(TEXT("Director EndPlay removes orphan shots"),Orphan->IsActorBeingDestroyed());
+	S.Player->GetCharacterMovement()->DisableMovement(); ++GFrameCounter; S.World->Tick(LEVELTICK_All,3);
+	int32 Remaining=0; for (TActorIterator<AWEVORAArenaEnemy> It(S.World); It; ++It) { ++Remaining; }
+	TestEqual(TEXT("No delayed callbacks create enemies after EndPlay"),Remaining,0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSoloInvalidDataTest, "WEVORA.Solo.InvalidDataAndTimeout", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSoloInvalidDataTest::RunTest(const FString& Parameters)
+{
+	FSoloWorld S;
+	S.Run->Config->PreparationSeconds=std::numeric_limits<float>::quiet_NaN();
+	TestFalse(TEXT("Non-finite data rejected"),S.Run->StartRun(S.Player));
+	TestEqual(TEXT("Invalid data surfaces a result, not endless Idle"),S.Run->State,EWEVORARunState::Defeat);
+	S.Run->Config->PreparationSeconds=0;
+	S.Run->Config->Waves[0].AliveCap=0; TestFalse(TEXT("Zero cap cannot softlock"),S.Run->StartRun(S.Player));
+	S.Run->Config->Waves[0].AliveCap=2; S.Run->Config->WaveTimeout=10;
+	S.Run->StartRun(S.Player); S.Step(); S.Step(11);
+	TestEqual(TEXT("Timeout ends once"),S.Run->State,EWEVORARunState::Defeat);
+	TestEqual(TEXT("Timeout reason"),S.Run->ResultReason,FString(TEXT("Wave timed out")));
+	S.Step(100); TestEqual(TEXT("No background progress after timeout"),S.Run->Enemies.Num(),0);
 	return true;
 }
 #endif

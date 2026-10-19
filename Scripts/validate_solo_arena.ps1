@@ -8,6 +8,18 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $projectFile = Join-Path $projectRoot 'WEVORA.uproject'
 $logRoot = Join-Path $projectRoot 'Saved/Logs'
 New-Item -ItemType Directory -Force $logRoot | Out-Null
+$protected = @{}
+git -C $projectRoot ls-files Content Config | ForEach-Object {
+    $protected[$_] = (Get-FileHash -LiteralPath (Join-Path $projectRoot $_) -Algorithm SHA256).Hash
+}
+function Confirm-ProtectedAssets {
+    foreach ($relative in $protected.Keys) {
+        if ($protected[$relative] -ne (Get-FileHash -LiteralPath (Join-Path $projectRoot $relative) -Algorithm SHA256).Hash) {
+            throw "Protected Content/Config changed: $relative"
+        }
+    }
+    Write-Host "Protected Content/Config: $($protected.Count) SHA-256 hashes unchanged."
+}
 $reportPath = Join-Path $projectRoot "Saved/Automation/Solo$Phase"
 function Invoke-Task([string]$Executable, [string[]]$TaskArguments, [string]$Name) {
     & $Executable @TaskArguments *> (Join-Path $logRoot "$Name.log")
@@ -23,7 +35,8 @@ Invoke-Task $editor @($projectFile,'-unattended','-nop4','-nosplash','-nosound',
     '-ExecCmds=Automation RunTests WEVORA.','-TestExit=Automation Test Queue Empty',
     "-ReportExportPath=$reportPath", "-abslog=$logRoot/Solo${Phase}Automation.log") "Solo${Phase}Tests"
 $report = Get-Content (Join-Path $reportPath 'index.json') -Raw | ConvertFrom-Json
-if ($report.failed -ne 0 -or $report.notRun -ne 0 -or $report.succeeded -lt 47) { throw 'Incomplete or failed automation report' }
+$minimumTests = @{ A=47; B=49; C=55; D=58 }
+if ($report.failed -ne 0 -or $report.notRun -ne 0 -or $report.succeeded -lt $minimumTests[$Phase]) { throw 'Incomplete or failed automation report' }
 foreach ($test in $report.tests) {
     if ($test.state -ne 'Success' -or $test.errors -gt 0 -or $test.warnings -gt 0) { throw "Test error/warning: $($test.fullTestPath)" }
 }
@@ -34,7 +47,7 @@ foreach ($oldTest in $baseline.tests) {
     }
 }
 Write-Host "All $($report.succeeded) tests passed; all $($baseline.tests.Count) prior tests retained."
-if ($Phase -ne 'D') { return }
+if ($Phase -ne 'D') { Confirm-ProtectedAssets; return }
 $persistenceSlot = 'WEVORA_Automation_' + [guid]::NewGuid().ToString('N')
 foreach ($mode in @('Write','Read')) {
     $processReport = Join-Path $projectRoot "Saved/Automation/SoloPersistence$mode"
@@ -45,7 +58,7 @@ foreach ($mode in @('Write','Read')) {
     if ($processResult.succeeded -ne 1 -or $processResult.failed -ne 0 -or $processResult.notRun -ne 0) { throw "Process persistence $mode failed" }
 }
 Invoke-Task $editor @($projectFile,'-run=CompileAllBlueprints','-unattended','-nop4','-nosound','-NullRHI') 'SoloDBlueprints'
-if ($SkipPlayer) { return }
+if ($SkipPlayer) { Confirm-ProtectedAssets; return }
 Invoke-Task $build (@('WEVORA') + $flags) 'SoloDPlayerBuild'
 $archive = Join-Path $projectRoot 'Saved/SoloArenaPlayer'
 Invoke-Task (Join-Path $EngineRoot 'Build/BatchFiles/RunUAT.bat') @('BuildCookRun',"-project=$projectFile",
@@ -67,3 +80,4 @@ foreach ($map in @('L_SoloArenaPrototype','L_CombatPlayground')) {
     if (-not (Select-String -LiteralPath $playerLog -Pattern "Bringing World /Game/WEVORA/Maps/$map" -Quiet)) { throw "Wrong world: $map" }
     Write-Host "Rendering smoke passed: $map (no human input verification)."
 }
+Confirm-ProtectedAssets

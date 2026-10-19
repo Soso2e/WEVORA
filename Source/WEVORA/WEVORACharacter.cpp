@@ -126,7 +126,7 @@ void AWEVORACharacter::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	UpdateCameraFeel(DeltaSeconds);
-	if (bShowFlightFeedback && IsLocallyControlled() && GEngine)
+	if (bShowFlightFeedback && !bUseSoloHUD && IsLocallyControlled() && GEngine)
 	{
 		const UEnum* StateEnum = StaticEnum<EWEVORAFlightState>();
 		GEngine->AddOnScreenDebugMessage(static_cast<uint64>(GetUniqueID()), 0.1f,
