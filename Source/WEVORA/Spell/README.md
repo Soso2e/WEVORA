@@ -1,27 +1,25 @@
 # Spell Weaving Prototype
 
-操作（2026-10-09）:
+操作（2026-11-02）:
 
-- 通常攻撃: LMBを押して離すとForward弾を発射。短いクリックでも使えます。
-- チャージ攻撃: LMB長押し → 離して発射。最大2秒で威力2倍（途中は線形に増加）。最大到達後も離すまで保持します。
-- 編み攻撃: 先に照準を合わせる → Eを押しながらマウスで描く → Eを離して発射。LMBは不要です。
-- 共通クールタイムは発射入力から0.5秒。期間中に押した入力は予約せず、再度押してください。
-- 照準の下にチャージ量（黄、最大で緑）とクールタイム回復（灰色）を表示します。
-- 描画が認識できない場合はキャンセル。クールタイムは発生しません。発射位置が壁で塞がれている場合の発射試行にはクールタイムが発生します。
-- 通常攻撃中のE、編み中のLMBは無視します。回避・降下・操作解除によるキャンセル後にキーを離しても発射しません。
+- **E長押し**: マウスで形を描く。描画中は設定に応じてカメラ回転を固定。
+- **Eを離す**: ジェスチャーを認識し、成功なら `ReadyToCast` として保持。**この時点では発射しない**。
+- **エイム**: Eを離した後はマウスでカメラと照準を動かせる。保持時間は無制限。
+- **LMBを押す**: 保持中の魔法をその瞬間の照準で発射。LMBを離す操作では発射しない。
+- **高速操作**: Eを押したままLMBを押しても、認識できる形が描けていれば認識して即発射。E解放で二度撃ちは起きない。
+- 未完成の形や空のLMBは攻撃しない。認識できないE描画はキャンセル。E保持中の早すぎるLMBは無視し、そのまま編み直せる。
+- 発射時に0.5秒のクールタイム。クールタイム中の入力は予約しない。保持中の魔法は回避・降下・操作解除・リセットで消える。
+- Qで属性を切り替え、編み中や保持中にも変更できる。LMBの旧通常/チャージ攻撃は**デフォルト無効**。互換用の `bEnableLegacyNormalAttack` を明示的にONにした場合のみ `BeginAttack / ReleaseAttack` APIから実行できるが、LMBにはBindしない。
 
-調整: WeavingComponentの`AttackCooldown` / `MaxChargeTime`、CastComponentの`MaxChargePowerMultiplier`。
-チャージはFireのダメージ・燃焼、Windの押し出し・浮かせに適用。編み攻撃の威力は従来値です。
-QでFire/Windを切り替えます。編み中・Shape確定後も変更でき、次回も属性を保持します。
-旧`BeginWeave / BeginShape / EndShape / ReleaseWeave` APIは構成処理用に維持。実入力は
-`BeginAttack / ReleaseAttack` と `BeginQuickShape / EndQuickShape`へ接続しています。
+実入力はCharacterの `E: BeginQuickShape / EndQuickShape`、`LMB pressed: FirePreparedSpell`、`Q: CycleElement`。旧 `BeginWeave / BeginShape / EndShape / ReleaseWeave` は合成処理・後方互換用に残す。
+既存のBlueprintやEnhanced InputアセットでLMBの旧 `BeginAttack / ReleaseAttack` を独自に呼んでいる場合は解除し、キー入力が重複しないことを実機で確認する。
 
 ## TPS照準（2026-10-08）
 
 - 右肩越しカメラ。キャラクターを画面中央から左へずらし、中央レティクルで狙います。
 - 右クリック保持で精密照準（カメラ距離300cm・FOV70）。解除で通常の距離・速度連動FOVへ滑らかに戻ります。
 - レティクルは白が通常、緑が生存中のHealthComponentを持つ対象、赤い×が射線遮断。敵の自動追尾・ロックオンは行いません。
-- E保持中のマウス操作は形の入力に使い、カメラの向きを固定します。E解放で直ちに発射するため、描く前に敵を狙います。LMBのチャージ中は通常通り照準を調整できます。
+- E保持中のマウス操作は形の入力に使い、カメラの向きを固定します。Eを離して保持状態に入った後はカメラを自由に回せます。LMBを押した瞬間の照準で発射します。
 - カメラ中央から対象点を求め、Playerの発射位置からその点へ弾を飛ばします。レティクルと発射処理は同じ`GetAimSolution`を使用します。
 - 弾の半径を含めてPlayerからの射線を検査。肩越しに敵が見えていても壁が弾を遮る場合は赤い×になります。発射直前の壁はSpawnを止め、それより先の壁には弾が衝突します。
 - 移動速度の弾への加算は既定で無効。保存済みBlueprintに旧`HorizontalVelocityInheritance=0.4`が残っていても`bInheritShooterVelocity=false`なら照準から横へずれません。旧挙動への明示的な切替時は予告弾道とずれます。
@@ -71,7 +69,7 @@ Cast通知はCharacterの`SpellCastComponent`が購読し、共通Projectileを�
 
 責務: `Element × Shape × Delivery × Target State → Reaction`。
 
-- Weaving: Q選択 / LMBチャージ / E単独の描画発射 / GestureRecognizer / Cast / Cancel。
+- Weaving: Q選択 / E長押し描画 / E解放による保持 / LMB押下発射 / GestureRecognizer / Cast / Cancel。
   `AvailableElements`で切替順を設定。今回の属性はFire / Windのみ。
 - Spell Data: `FWEVORASpellData`にElement / Shape / Delivery / Power / 世界座標Direction。
   Powerは初期値1の倍率。画面の入力方向・軌跡は従来のContextに残す。
@@ -117,9 +115,9 @@ Cast通知はCharacterの`SpellCastComponent`が購読し、共通Projectileを�
 
 1. Editorを再起動して新しいC++クラスを読み込み、通常のGameModeでPlay。
 2. Viewportをクリック。初期属性Fire。QでFire / Wind切替。
-3. 敵を画面中央に合わせ、LMBを短く押して離すと通常弾。長押しではゲージが2秒で最大になり、離してチャージ弾。
-4. 編み攻撃は敵に照準を合わせ、Eを押して**マウスを上へ動かし**、Eを離すだけでCast。
-   `Last Cast: Thrust`を確認。Thrustが世界の`Forward`に対応する。
+3. Eを押して**マウスを上へ動かし**、Eを離す。 `ReadyToCast` のまま弾が出ないことを確認。
+4. マウスで敵に照準を合わせ直してLMBを押すとCast。`Last Cast: Thrust`を確認。Thrustが世界の`Forward`に対応する。
+   Eを押したまま形を描いてLMBを押しても即発射すること、Eを離しても二重発射しないことを確認。
    地上でも空中でも可能。空中ならSpaceでジャンプ、左Altでホバー。
 5. Fire: 球が敵へ命中しHP表示が減る。約3秒の燃焼でもHPが減る。
    敵の`HealthComponent / Show Damage Feedback`を有効にするとHPを画面で確認できる。
@@ -181,7 +179,7 @@ Characterの`SpellSelectionEffectComponent`が、`OnSpellPresentationChanged`を
 認識処理と見た目を分離し、Tickで状態を監視せず、選択・状態の変更時だけ更新します。
 
 - Qで属性切替: 体から選択属性を`Selection Preview Duration`秒表示（初期値0.35秒、内部名IdlePreviewDuration）。編み中にも体から表示、連続切替で延長。
-- LMBチャージ中またはEで編み中: 右手に現在の属性を継続表示。Qで右手の属性も更新。
+- Eで編み中または完成魔法を保持中: 右手に現在の属性を継続表示。Qで右手の属性も更新。
 - Cast、途中キャンセル、操作キャラクターの解除: 即時停止。
 - EndPlay: タイマー、通知購読、生成した表示コンポーネントを解放。
 
