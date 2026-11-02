@@ -68,8 +68,10 @@ void UWEVORASpellWeavingComponent::ReleaseAttack()
 
 void UWEVORASpellWeavingComponent::BeginQuickShape()
 {
-	if (!bCombatInputEnabled) { return; }
-	if (State != EWEVORAWeavingState::Idle || GetCooldownRemaining() > 0.0f) { return; }
+	if (!bCombatInputEnabled || GetCooldownRemaining() > 0.0f) { return; }
+	// Pressing E again replaces a held composition, without firing the old one.
+	if (State == EWEVORAWeavingState::ReadyToCast) { CancelWeave(); }
+	if (State != EWEVORAWeavingState::Idle) { return; }
 	bQuickShapeHeld = true;
 	BeginWeave();
 	BeginShape();
