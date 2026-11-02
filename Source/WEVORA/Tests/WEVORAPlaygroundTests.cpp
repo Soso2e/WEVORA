@@ -144,11 +144,14 @@ bool FPlaygroundTrialTest::RunTest(const FString& Parameters)
 	AWEVORACombatPlayground* Trial = Scene.World->SpawnActor<AWEVORACombatPlayground>();
 	Scene.Step(0.15f);
 	Player->ManaComponent->ConsumeMana(50);
-	Player->SpellWeavingComponent->BeginAttack();
+	Player->SpellWeavingComponent->BeginQuickShape();
+	Player->SpellWeavingComponent->RecordLook(FVector2D(0, -15));
+	Player->SpellWeavingComponent->EndQuickShape();
+	TestEqual(TEXT("Prepared cast exists before reset"), Player->SpellWeavingComponent->State, EWEVORAWeavingState::ReadyToCast);
 	Scene.World->SpawnActor<AWEVORASpellProjectile>(FVector(0, 800, 500), FRotator::ZeroRotator);
 	Trial->ResetTrial();
 	TestEqual(TEXT("Full mana"), Player->ManaComponent->Mana, Player->ManaComponent->MaxMana);
-	TestEqual(TEXT("Held charge cancelled"), Player->SpellWeavingComponent->State, EWEVORAWeavingState::Idle);
+	TestEqual(TEXT("Held spell cancelled"), Player->SpellWeavingComponent->State, EWEVORAWeavingState::Idle);
 	TestEqual(TEXT("Cooldown cleared"), Player->SpellWeavingComponent->GetCooldownRemaining(), 0.0f);
 	TestEqual(TEXT("All target HP restored with trial tuning"), Target->HealthComponent->Health, Trial->TargetHealth);
 	TestTrue(TEXT("Bounds detect roof and floor"), Trial->IsOutsideBounds(FVector(0,0,7000)) && Trial->IsOutsideBounds(FVector(0,0,-500)));
@@ -266,6 +269,8 @@ bool FPlaygroundFeedbackTest::RunTest(const FString& Parameters)
 	if (!TestNotNull(TEXT("Saved player"), Class)) { return false; }
 	AWEVORACharacter* Player = Scene.World->SpawnActor<AWEVORACharacter>(Class, FVector(0,0,500), FRotator::ZeroRotator);
 	Player->SpellWeavingComponent->bShowDebug = false;
+	// Older charge-feedback presentation remains opt-in for regression coverage.
+	Player->SpellWeavingComponent->bEnableLegacyNormalAttack = true;
 	Player->SpellWeavingComponent->BeginAttack();
 	UStaticMeshComponent* Core = Player->SpellSelectionEffectComponent->ChargeCore;
 	if (!TestNotNull(TEXT("One reused charge core"), Core)) { return false; }

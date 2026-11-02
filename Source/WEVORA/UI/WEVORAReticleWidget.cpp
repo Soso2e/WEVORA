@@ -109,9 +109,13 @@ int32 UWEVORAReticleWidget::DrawPlaygroundHUD(const FGeometry& Geometry,
 	Box(FVector2D(34,72), FVector2D(130 * FMath::Clamp(Pilot->HealthComponent->Health /
 		FMath::Max(1.0f, Pilot->HealthComponent->MaxHealth), 0.0f, 1.0f),4), FLinearColor(0.4f,1,0.5f));
 	Box(FVector2D(184,72), FVector2D(130 * Pilot->ManaComponent->GetManaRatio(),4), FLinearColor(0.15f,0.55f,1));
+	const FString ActionStatus = Weave->GetCooldownRemaining() > 0.0f
+		? FString::Printf(TEXT("CT %.1fs"), Weave->GetCooldownRemaining())
+		: Weave->State == EWEVORAWeavingState::ReadyToCast ? TEXT("AIM + LMB TO FIRE")
+		: Weave->State == EWEVORAWeavingState::Shaping ? TEXT("DRAWING (E)")
+		: Weave->State == EWEVORAWeavingState::Weaving ? TEXT("WEAVING") : TEXT("HOLD E TO DRAW");
 	Text(FVector2D(34,84), FString::Printf(TEXT("%s    %s"), *StaticEnum<EWEVORASpellElement>()->GetNameStringByValue(int64(Element)),
-		Weave->GetCooldownRemaining() > 0 ? *FString::Printf(TEXT("CT %.1fs"), Weave->GetCooldownRemaining())
-		: Weave->State != EWEVORAWeavingState::Idle ? *FString::Printf(TEXT("PREPARING %.0f%%"), Weave->GetChargeAlpha()*100) : TEXT("READY")), 15, Color);
+		*ActionStatus), 15, Color);
 	Text(FVector2D(34,111), FString::Printf(TEXT("Lightning assist: %s  [F3]"), Trial->bLightningAssist ? TEXT("ON (cast only)") : TEXT("OFF / straight")), 11);
 	if (Trial->bShowGuide)
 	{
@@ -120,9 +124,9 @@ int32 UWEVORAReticleWidget::DrawPlaygroundHUD(const FGeometry& Geometry,
 		const TArray<FString> Guide = {
 			TEXT("WASD move  |  Space jump / ascend  |  Ctrl dive"),
 			TEXT("Shift dash + hold altitude  |  Alt brake / hover"),
-			TEXT("LMB tap: quick shot  |  hold + release: charge"),
+			TEXT("Hold E + draw: weave  |  release E: hold spell"),
 			TEXT("Q: Fire / Wind / Lightning  |  RMB: precision aim"),
-			TEXT("Hold E + draw, release E: cast your shape"),
+			TEXT("Aim, then LMB: fire  |  E + LMB: fast cast"),
 			TEXT("UP thrust  |  SIDE sweep  |  LOOP field  |  DOWN slam"),
 			TEXT("Lead moving targets. The circle is an aiming guide."),
 			TEXT("Fire burns  |  Wind pushes  |  Lightning is fast")};

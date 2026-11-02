@@ -48,7 +48,7 @@ float UWEVORASpellWeavingComponent::GetChargeAlpha() const
 
 void UWEVORASpellWeavingComponent::BeginAttack()
 {
-	if (!bCombatInputEnabled) { return; }
+	if (!bEnableLegacyNormalAttack || !bCombatInputEnabled) { return; }
 	if (State != EWEVORAWeavingState::Idle || GetCooldownRemaining() > 0.0f) { return; }
 	AttackStartTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
 	bAttackHeld = true;
@@ -57,7 +57,7 @@ void UWEVORASpellWeavingComponent::BeginAttack()
 
 void UWEVORASpellWeavingComponent::ReleaseAttack()
 {
-	if (!bAttackHeld) { return; }
+	if (!bEnableLegacyNormalAttack || !bAttackHeld) { return; }
 	if (State != EWEVORAWeavingState::Weaving) { CancelWeave(); return; }
 	Context.Gesture = EWEVORAGesture::Thrust;
 	Context.ChargeAlpha = GetChargeAlpha();
@@ -68,8 +68,10 @@ void UWEVORASpellWeavingComponent::ReleaseAttack()
 
 void UWEVORASpellWeavingComponent::BeginQuickShape()
 {
-	if (!bCombatInputEnabled) { return; }
-	if (State != EWEVORAWeavingState::Idle || GetCooldownRemaining() > 0.0f) { return; }
+	if (!bCombatInputEnabled || GetCooldownRemaining() > 0.0f) { return; }
+	// Pressing E again replaces a held composition, without firing the old one.
+	if (State == EWEVORAWeavingState::ReadyToCast) { CancelWeave(); }
+	if (State != EWEVORAWeavingState::Idle) { return; }
 	bQuickShapeHeld = true;
 	BeginWeave();
 	BeginShape();
@@ -78,8 +80,28 @@ void UWEVORASpellWeavingComponent::BeginQuickShape()
 void UWEVORASpellWeavingComponent::EndQuickShape()
 {
 	if (!bQuickShapeHeld) { return; }
+	bQuickShapeHeld = false;
 	EndShape();
-	ReleaseWeave();
+	// E release completes composition, never fires. Keep a recognized spell ready for aiming.
+	if (State != EWEVORAWeavingState::ReadyToCast) { CancelWeave(); }
+}
+
+void UWEVORASpellWeavingComponent::FirePreparedSpell()
+{
+	if (!bCombatInputEnabled || GetCooldownRemaining() > 0.0f) { return; }
+	// Fast cast: LMB during E hold recognizes the current shape before casting.
+	if (bQuickShapeHeld && State == EWEVORAWeavingState::Shaping)
+	{
+		EndShape();
+		if (State != EWEVORAWeavingState::ReadyToCast)
+		{
+			// Ignore an incomplete click; E can continue recording a fresh gesture.
+			BeginShape();
+			return;
+		}
+	}
+	// Empty clicks never produce an unprepared normal attack.
+	if (State == EWEVORAWeavingState::ReadyToCast) { ReleaseWeave(); }
 }
 
 void UWEVORASpellWeavingComponent::CycleElement()

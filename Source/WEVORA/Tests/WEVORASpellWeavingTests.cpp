@@ -71,6 +71,19 @@ bool FWEVORAWeaveTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Invalid replacement clears ready shape"), C->State, EWEVORAWeavingState::Weaving);
 	C->ReleaseWeave();
 	TestEqual(TEXT("Incomplete weave cancels"), C->State, EWEVORAWeavingState::Idle);
+	C->BeginQuickShape();
+	C->FirePreparedSpell(); // Too early: no samples yet.
+	TestEqual(TEXT("Early click can continue drawing"), C->State, EWEVORAWeavingState::Shaping);
+	C->RecordLook(FVector2D(15, 0));
+	C->EndQuickShape();
+	TestEqual(TEXT("E release stores a prepared spell"), C->State, EWEVORAWeavingState::ReadyToCast);
+	C->BeginQuickShape(); // Replace the held composition without casting it.
+	TestEqual(TEXT("Re-press E replaces ready shape"), C->State, EWEVORAWeavingState::Shaping);
+	C->RecordLook(FVector2D(0, -15));
+	C->EndQuickShape();
+	C->FirePreparedSpell();
+	TestEqual(TEXT("Explicit click consumes replaced shape"), C->State, EWEVORAWeavingState::Idle);
+	TestEqual(TEXT("Replaced gesture is what cast"), C->LastCastContext.Gesture, EWEVORAGesture::Thrust);
 	return true;
 }
 

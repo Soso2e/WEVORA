@@ -141,9 +141,8 @@ void AWEVORACharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	PlayerInputComponent->BindKey(EKeys::RightMouseButton, IE_Pressed, this, &AWEVORACharacter::BeginPrecisionAim);
 	PlayerInputComponent->BindKey(EKeys::RightMouseButton, IE_Released, this, &AWEVORACharacter::EndPrecisionAim);
 	PlayerInputComponent->BindKey(EKeys::Y, IE_Pressed, this, &AWEVORACharacter::DoRecenterView).bConsumeInput = false;
-	// Asset-free fallback; Blueprint/Enhanced Input may also call the component API.
-	PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, SpellWeavingComponent, &UWEVORASpellWeavingComponent::BeginAttack).bConsumeInput = false;
-	PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Released, SpellWeavingComponent, &UWEVORASpellWeavingComponent::ReleaseAttack).bConsumeInput = false;
+	// E composes a spell; only a deliberate LMB press casts it. No release-to-fire binding.
+	PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, SpellWeavingComponent, &UWEVORASpellWeavingComponent::FirePreparedSpell).bConsumeInput = false;
 	PlayerInputComponent->BindKey(EKeys::Q, IE_Pressed, SpellWeavingComponent, &UWEVORASpellWeavingComponent::CycleElement).bConsumeInput = false;
 	PlayerInputComponent->BindKey(EKeys::E, IE_Pressed, SpellWeavingComponent, &UWEVORASpellWeavingComponent::BeginQuickShape).bConsumeInput = false;
 	PlayerInputComponent->BindKey(EKeys::E, IE_Released, SpellWeavingComponent, &UWEVORASpellWeavingComponent::EndQuickShape).bConsumeInput = false;
@@ -450,6 +449,7 @@ void AWEVORACharacter::ResetForPlayground(const FTransform& Start)
 
 void AWEVORACharacter::SuspendRunControls(bool bSuspend)
 {
+	if (bSuspend) { SpellWeavingComponent->CancelWeave(); }
 	bRunControlsSuspended = bSuspend;
 	ResetFlightInput();
 	GetCharacterMovement()->StopMovementImmediately();
