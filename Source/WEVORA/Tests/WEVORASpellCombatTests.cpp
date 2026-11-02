@@ -361,6 +361,72 @@ bool FWEVORASpellSafetyTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORAPreparedCastInputTest, "WEVORA.Spell.Combat.PreparedCastInput",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FWEVORAPreparedCastInputTest::RunTest(const FString& Parameters)
+{
+	FSpellCombatWorld Scene;
+	if (!TestNotNull(TEXT("Saved pilot"), Scene.Pilot) || !TestNotNull(TEXT("Saved enemy"), Scene.Enemy)) { return false; }
+	Scene.AimTarget(FRotator::ZeroRotator);
+	UWEVORASpellWeavingComponent* C = Scene.Pilot->SpellWeavingComponent;
+	TestFalse(TEXT("Unprepared LMB/legacy normal attack disabled"), C->bEnableLegacyNormalAttack);
+	C->FirePreparedSpell();
+	C->BeginAttack(); C->ReleaseAttack();
+	TestNull(TEXT("Empty click does not fire"), Scene.Shot());
+
+	C->BeginQuickShape();
+	TestEqual(TEXT("E press begins shaping"), C->State, EWEVORAWeavingState::Shaping);
+	const FRotator DrawingView = Scene.Controller->GetControlRotation();
+	Scene.Pilot->DoLook(0, -15);
+	TestTrue(TEXT("Drawing does not move camera"), DrawingView.Equals(Scene.Controller->GetControlRotation()));
+	C->EndQuickShape();
+	TestEqual(TEXT("E release holds prepared spell"), C->State, EWEVORAWeavingState::ReadyToCast);
+	TestEqual(TEXT("Prepared shape is thrust"), C->Context.Gesture, EWEVORAGesture::Thrust);
+	TestNull(TEXT("No shot until click"), Scene.Shot());
+	TestEqual(TEXT("No cooldown until cast"), C->GetCooldownRemaining(), 0.0f);
+
+	Scene.Pilot->DoLook(20, 0);
+	TestFalse(TEXT("Camera can be re-aimed after release"), DrawingView.Equals(Scene.Controller->GetControlRotation()));
+	Scene.Step(0.5f);
+	Scene.UpdateView();
+	FWEVORAAimSolution ExpectedAim;
+	TestTrue(TEXT("Aim solution before click"), Scene.Pilot->SpellCastComponent->GetAimSolution(16.0f, ExpectedAim));
+	C->FirePreparedSpell();
+	TestEqual(TEXT("Click consumes the prepared spell"), C->State, EWEVORAWeavingState::Idle);
+	AWEVORASpellProjectile* Fired = Scene.Shot();
+	if (!TestNotNull(TEXT("Click launches spell"), Fired)) { return false; }
+	TestTrue(TEXT("Launch uses click-time aim, not E release view"), Fired->Launch.Direction.Equals(ExpectedAim.Direction, 0.05f));
+	TestEqual(TEXT("Recognized shape reaches projectile"), Fired->Launch.Composition.Gesture, EWEVORAGesture::Thrust);
+	Fired->Destroy();
+	C->FirePreparedSpell();
+	TestNull(TEXT("Second click cannot repeat consumed spell"), Scene.Shot());
+	Scene.Step(0.51f);
+
+	C->BeginQuickShape();
+	Scene.Pilot->DoLook(0, -15);
+	C->FirePreparedSpell(); // Fast cast while E is still physically held.
+	TestEqual(TEXT("Early click casts recognized shape"), C->State, EWEVORAWeavingState::Idle);
+	AWEVORASpellProjectile* Fast = Scene.Shot();
+	if (!TestNotNull(TEXT("Fast E+LMB fires"), Fast)) { return false; }
+	Fast->Destroy();
+	C->EndQuickShape();
+	TestNull(TEXT("E keyup after early click does not double fire"), Scene.Shot());
+	Scene.Step(0.51f);
+
+	C->BeginQuickShape();
+	C->EndQuickShape();
+	C->FirePreparedSpell();
+	TestNull(TEXT("Invalid gesture never fires"), Scene.Shot());
+	TestEqual(TEXT("Invalid gesture consumes no cooldown"), C->GetCooldownRemaining(), 0.0f);
+	C->BeginQuickShape();
+	Scene.Pilot->DoLook(0, -15);
+	C->EndQuickShape();
+	C->CancelWeave();
+	C->FirePreparedSpell();
+	TestNull(TEXT("Canceled prepared spell cannot fire"), Scene.Shot());
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWEVORASimpleAttackTest, "WEVORA.Spell.Combat.SimpleAttack",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FWEVORASimpleAttackTest::RunTest(const FString& Parameters)
@@ -371,6 +437,8 @@ bool FWEVORASimpleAttackTest::RunTest(const FString& Parameters)
 	UWEVORASpellWeavingComponent* C = Scene.Pilot->SpellWeavingComponent;
 	TestEqual(TEXT("Default cooldown"), C->AttackCooldown, 0.5f);
 	TestEqual(TEXT("Default charge cap"), C->MaxChargeTime, 2.0f);
+	// Legacy hold/release attacks are explicitly opt-in; never bound to LMB by default.
+	C->bEnableLegacyNormalAttack = true;
 	C->BeginAttack();
 	C->ReleaseAttack();
 	AWEVORASpellProjectile* Tap = Scene.Shot();
@@ -411,10 +479,13 @@ bool FWEVORASimpleAttackTest::RunTest(const FString& Parameters)
 	Scene.Pilot->DoLook(15.0f, 0.0f);
 	TestTrue(TEXT("Drawing preserves aim"), Before.Equals(Scene.Controller->GetControlRotation()));
 	C->EndQuickShape();
-	TestEqual(TEXT("E release casts and resets"), C->State, EWEVORAWeavingState::Idle);
-	TestEqual(TEXT("Drawn gesture preserved"), C->LastCastContext.Gesture, EWEVORAGesture::Sweep);
+	TestEqual(TEXT("E release holds recognized shape"), C->State, EWEVORAWeavingState::ReadyToCast);
+	TestEqual(TEXT("Held gesture preserved"), C->Context.Gesture, EWEVORAGesture::Sweep);
+	TestNull(TEXT("E release alone does not fire"), Scene.Shot());
+	C->FirePreparedSpell();
+	TestEqual(TEXT("Click fires and resets"), C->State, EWEVORAWeavingState::Idle);
 	AWEVORASpellProjectile* Woven = Scene.Shot();
-	if (!TestNotNull(TEXT("E release needs no left click"), Woven)) { return false; }
+	if (!TestNotNull(TEXT("LMB cast fires held shape"), Woven)) { return false; }
 	Woven->Destroy();
 	Scene.Step(0.51f);
 	C->BeginQuickShape(); C->EndQuickShape();
@@ -438,6 +509,7 @@ bool FWEVORALightningHitTest::RunTest(const FString& Parameters)
 		if (!TestNotNull(TEXT("Saved pilot"), Scene.Pilot) || !TestNotNull(TEXT("Saved enemy"), Scene.Enemy)) { return false; }
 		Scene.AimTarget(FRotator::ZeroRotator);
 		auto* Weaving = Scene.Pilot->SpellWeavingComponent;
+		Weaving->bEnableLegacyNormalAttack = true;
 		Weaving->CycleElement(); Weaving->CycleElement();
 		TestEqual(TEXT("Q cycle reaches Lightning"), Weaving->Context.Element, EWEVORASpellElement::Lightning);
 		Weaving->BeginAttack();
@@ -688,9 +760,12 @@ bool FPlaygroundCastRoutingTest::RunTest(const FString& Parameters)
 	AWEVORACombatPlayground* Trial = Scene.World->SpawnActor<AWEVORACombatPlayground>();
 	Trial->SetActorTickEnabled(false);
 	Scene.AimTarget(FRotator::ZeroRotator);
-	Scene.Pilot->SpellWeavingComponent->BeginAttack();
-	Scene.Pilot->SpellWeavingComponent->ReleaseAttack();
-	TestNotNull(TEXT("Normal LMB routes to a real projectile"), Scene.Shot());
+	Scene.Pilot->SpellWeavingComponent->BeginQuickShape();
+	Scene.Pilot->DoLook(0, -15);
+	Scene.Pilot->SpellWeavingComponent->EndQuickShape();
+	TestNull(TEXT("E release waits for click in Playground"), Scene.Shot());
+	Scene.Pilot->SpellWeavingComponent->FirePreparedSpell();
+	TestNotNull(TEXT("Prepared click routes to a real projectile"), Scene.Shot());
 	for (EWEVORAGesture Gesture : {EWEVORAGesture::Sweep,EWEVORAGesture::Circle,EWEVORAGesture::Slam})
 	{
 		for (TActorIterator<AWEVORASpellDelivery> It(Scene.World); It; ++It) { It->Destroy(); }
