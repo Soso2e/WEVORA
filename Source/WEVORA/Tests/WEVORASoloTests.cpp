@@ -156,7 +156,10 @@ bool FSoloChoiceTest::RunTest(const FString& Parameters)
 	S.KillEnemies(); S.Step(); S.Step();
 	TestEqual(TEXT("Three distinct families offered"),S.Run->Choices.Num(),3);
 	TestTrue(TEXT("Choice suspends flight controls"),S.Player->AreRunControlsSuspended());
-	S.Player->SpellWeavingComponent->BeginAttack(); S.Player->SpellWeavingComponent->ReleaseAttack();
+	S.Player->SpellWeavingComponent->BeginQuickShape();
+	S.Player->SpellWeavingComponent->RecordLook(FVector2D(0, -15));
+	S.Player->SpellWeavingComponent->EndQuickShape();
+	S.Player->SpellWeavingComponent->FirePreparedSpell();
 	TestEqual(TEXT("Modal blocks casts"),S.Player->SpellCastComponent->CastCount,0);
 	TestFalse(TEXT("Bad selection ignored"),S.Run->SelectUpgrade(-1));
 	TestTrue(TEXT("Choose survival"),S.Run->SelectUpgrade(2));
@@ -236,7 +239,10 @@ bool FSoloFullRunTest::RunTest(const FString& Parameters)
 	FWEVORASpellContext Context; Context.Element=EWEVORASpellElement::Lightning; Context.Gesture=EWEVORAGesture::Thrust; FWEVORASpellLaunch Launch;
 	TestTrue(TEXT("Unlocked element has real cast behavior"),S.Player->SpellCastComponent->ResolveCastLaunch(Context,Launch));
 	S.Player->SpellWeavingComponent->Context.Element=EWEVORASpellElement::Lightning;
-	S.Player->SpellWeavingComponent->BeginAttack(); S.Player->SpellWeavingComponent->ReleaseAttack();
+	S.Player->SpellWeavingComponent->BeginQuickShape();
+	S.Player->SpellWeavingComponent->RecordLook(FVector2D(0, -15));
+	S.Player->SpellWeavingComponent->EndQuickShape();
+	S.Player->SpellWeavingComponent->FirePreparedSpell();
 	TestEqual(TEXT("Real Lightning delivery launched"),S.Player->SpellCastComponent->CastCount,1);
 	S.Run->Retry(); TestEqual(TEXT("Active restart allowed"),S.Run->State,EWEVORARunState::Preparing);
 	TestEqual(TEXT("Active restart clears casts"),S.Player->SpellCastComponent->CastCount,0);
