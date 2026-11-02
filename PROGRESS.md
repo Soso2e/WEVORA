@@ -20,8 +20,6 @@ main基点: `71b71ad`（2026-10-19 Solo Arena統合）。作業ブランチ: `fe
 
 ## 2026-10-19 Solo Arena Vertical Slice — Issue #10
 
-## 2026-10-19 Solo Arena Vertical Slice — Issue #10
-
 設計正本は `Docs/SoloArenaDesign.md`。mainのソロ文書3コミットをcherry-pickし、ROADMAPの競合は新優先方針と既存の検証記録を両立して解消。
 PR #8 / #9 / mainは変更・マージしていない。実装手順・操作・調整値・人間の受け入れ確認は `Docs/SoloArena.md`。
 
