@@ -449,6 +449,7 @@ void AWEVORACharacter::ResetForPlayground(const FTransform& Start)
 
 void AWEVORACharacter::SuspendRunControls(bool bSuspend)
 {
+	if (bSuspend) { SpellWeavingComponent->CancelWeave(); }
 	bRunControlsSuspended = bSuspend;
 	ResetFlightInput();
 	GetCharacterMovement()->StopMovementImmediately();
