@@ -44,6 +44,9 @@ public:
 	float AttackCooldown = 0.5f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Attack", meta=(ClampMin="0.01"))
 	float MaxChargeTime = 2.0f;
+	/** Compatibility only: opt in explicitly to old LMB hold/release normal attacks. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Spell|Legacy")
+	bool bEnableLegacyNormalAttack = false;
 	UFUNCTION(BlueprintCallable, Category="Spell|Attack")
 	void BeginAttack();
 	UFUNCTION(BlueprintCallable, Category="Spell|Attack")
@@ -52,6 +55,9 @@ public:
 	void BeginQuickShape();
 	UFUNCTION(BlueprintCallable, Category="Spell|Attack")
 	void EndQuickShape();
+	/** Cast the ready spell on LMB press. If E is still held, finish recognition first. */
+	UFUNCTION(BlueprintCallable, Category="Spell|Attack")
+	void FirePreparedSpell();
 	UFUNCTION(BlueprintPure, Category="Spell|Attack")
 	float GetChargeAlpha() const;
 	UFUNCTION(BlueprintPure, Category="Spell|Attack")
