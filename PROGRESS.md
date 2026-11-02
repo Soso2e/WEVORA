@@ -1,8 +1,24 @@
 # WEVORA Progress
 
-最終更新: 2026-10-19
+最終更新: 2026-11-02
 
-現在フェーズ: Solo Arena Vertical Slice（Issue #10、`feature/solo-arena-vertical-slice`、Draft PR #9の上に積む）
+現在フェーズ: Solo Arenaをmainへ統合済み。魔法の「編む → 構える → 放つ」を分離する操作改善。
+
+## 2026-11-02 魔法操作 — Eで編む / E解放で保持 / LMBで発射
+
+main基点: `71b71ad`（2026-10-19 Solo Arena統合）。作業ブランチ: `feat/weave-hold-click-cast`。
+
+- E長押しでマウスジェスチャーを描き、E解放で`ReadyToCast`保持。**E解放では発射しない**。保持中はマウスによる照準修正が可能。
+- 左クリック押下で、完成した魔法のみ発射（従来のカメラ/マズル解決を発射時に利用）。Eを押したまま有効な形が描けていれば左クリックで即発射。未完成のクリック、キャンセル後、クールタイム中は誤射しない。
+- E再押下で保持中の魔法を編み直す。回避・降下・操作停止・リセットで保持を破棄する。
+- 従来のLMB通常/チャージ攻撃は既定無効。旧`BeginAttack/ReleaseAttack`は明示的な`bEnableLegacyNormalAttack`設定に限ってAPI互換で利用可。LMBにはBindしない。
+- Playgroundのガイド・HUD、`GAME_DESIGN.md`、`Source/WEVORA/Spell/README.md`を更新。Spell / Playground / Soloテストの呼び出しを新仕様に対応し、保持・再照準・高速発射・無効入力・置換・キャンセルの回帰テストを追加。
+
+**このターンの検証範囲**: リモートのファイル内容と差分を対象にした静的チェック15項目すべて成功。Unreal Editor・Win64ビルド・全Automation Test・Blueprintのキー重複調査・PIEと実プレイは**未実行**。GitHub上にActionsワークフロー／CIステータスは確認できない。旧58/58件の実行成功は本変更の検証結果には流用しない。
+
+**実機で次に確認**: E長押しで描画→離して保持→カメラで狙い直し→LMB一度だけ発射、E押下中LMBによる高速発射、E解放後の二重発射なし、失敗ジェスチャー・空クリック・CT・回避と選択画面でのキャンセル、BP/EnhancedInputの入力二重割当なし、Solo/Playgroundで既存の命中・敵HP・VFXが維持されること。
+
+## 2026-10-19 Solo Arena Vertical Slice — Issue #10
 
 ## 2026-10-19 Solo Arena Vertical Slice — Issue #10
 
