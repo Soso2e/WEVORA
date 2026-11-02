@@ -385,7 +385,8 @@ bool FWEVORAPreparedCastInputTest::RunTest(const FString& Parameters)
 	TestNull(TEXT("No shot until click"), Scene.Shot());
 	TestEqual(TEXT("No cooldown until cast"), C->GetCooldownRemaining(), 0.0f);
 
-	Scene.Pilot->DoLook(20, 0);
+	// The fixture disables PlayerController input ticking, so emulate the player's retarget explicitly.
+	Scene.Controller->SetControlRotation(FRotator(0, 20, 0));
 	TestFalse(TEXT("Camera can be re-aimed after release"), DrawingView.Equals(Scene.Controller->GetControlRotation()));
 	Scene.Step(0.5f);
 	Scene.UpdateView();
